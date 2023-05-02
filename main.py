@@ -59,23 +59,48 @@ if __name__ == '__main__':
     time_limit = 100
     n_parcel_types = 5
 
-    env = Warehouse(
-        n_parcel_types=n_parcel_types,
-        n_rows=n_rows,
-        n_cols=n_cols
-    )
-    obs = env.reset()
-    # env.plot()
-    agent = AgentPostDecision(
-        warehouse=env,
-        alpha=0.4,
-        gamma=0.9,
-        n_item=n_parcel_types,
-        n_moves=2,  # viene fatta questa ipotesi per gestire al meglio la state-trasformation
-        time_limit=time_limit,
-        eps=0.3
-    )
-    costNoAgent = marshallingWithoutAgent(env, agent)
-    costAgent = marshallingWithAgent(env, agent)
+    # env = Warehouse(
+    #     n_parcel_types=n_parcel_types,
+    #     n_rows=n_rows,
+    #     n_cols=n_cols
+    # )
+    # obs = env.reset()
+    # # env.plot()
+    # agent = AgentPostDecision(
+    #     warehouse=env,
+    #     alpha=0.4,
+    #     gamma=0.9,
+    #     n_item=n_parcel_types,
+    #     n_moves=2,  # viene fatta questa ipotesi per gestire al meglio la state-trasformation
+    #     time_limit=time_limit,
+    #     eps=0.3
+    # )
+    # costNoAgent = marshallingWithoutAgent(env, agent)
+    # costAgent = marshallingWithAgent(env, agent)
 
     # L'idea è quella di vedere cosa succede cambiando il numero di parametri
+    costNoAgent = []
+    costAgent = []
+    for n_cols in [2, 3, 7]:
+        env = Warehouse(
+            n_parcel_types=n_parcel_types,
+            n_rows=n_rows,
+            n_cols=n_cols
+        )
+        obs = env.reset()
+        # env.plot()
+        agent = AgentPostDecision(
+            warehouse=env,
+            alpha=0.4,
+            gamma=0.9,
+            n_item=n_parcel_types,
+            n_moves=2,  # viene fatta questa ipotesi per gestire al meglio la state-trasformation
+            time_limit=time_limit,
+            eps=0.3
+        )
+        costNoAgent.append(marshallingWithoutAgent(env, agent))
+        costAgent.append(marshallingWithAgent(env, agent))
+
+    print('Finito!')
+    print('Cost no Agent:', costNoAgent)
+    print('Cost with Agent:', costAgent)
