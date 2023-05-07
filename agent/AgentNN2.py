@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 
 
-
 def compare_np_arr(state1, state2):
     compare = (state1 == state2)
     flag = True
@@ -36,26 +35,26 @@ def compareDisposition(a, b):
 
 
 def compareState(state1, state2):
-    state1_disposition = state1.disposition
-    state2_disposition = state2.disposition
-    return compare_np_arr(state1_disposition, state2_disposition)
+    elem_last_cols1 = state1['needChange']
+    freeSpace1 = state1['freeSpace']
+    elem_last_cols2 = state2['needChange']
+    freeSpace2 = state2['freeSpace']
+    flag = compare_np_arr(state1=elem_last_cols1, state2=elem_last_cols2) and compare_np_arr(state1=freeSpace1,
+                                                                                             state2=freeSpace2)
+    return flag
 
 
 class Net(nn.Module):
 
-    def __init__(self, n_rows, n_cols, n_parcel_items):
+    def __init__(self, n_cols):
         super(Net, self).__init__()
-        # n_parcel_items input channels, n_parcel_items output channels, 3x3 square convolution kernel
-        self.conv = nn.Conv2d(n_parcel_items, n_parcel_items, kernel_size=3, padding=1)
         # n_parcel_items*n_rows*n_cols input channels, n_rows*n_cols output channels
-        self.fc1 = nn.Linear(n_parcel_items*n_rows*n_cols, n_rows*n_cols)
+        self.fc1 = nn.Linear(2 * n_cols, 1)
         # n_rows*n_cols input channels, 1 output channel
-        self.fc3 = nn.Linear(n_rows*n_cols, 1)
 
     def forward(self, x):
         x = torch.flatten(x, start_dim=1)
         x = F.sigmoid(self.fc1(x))
-        x = self.fc3(x)
         return x
 
 
@@ -90,9 +89,10 @@ def train_loop(dataloader, model, loss_fn, optimizer):
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-class AgentNN:
-    def __init__(self, warehouse, alpha, gamma, n_item, time_limit, n_moves=2, eps=0.1):
+class AgentNN2:
+    def __init__(self, warehouse, alpha, gamma, n_item, time_limit, n_moves=1, eps=0.1):
 
+        self.actualState = None
         self.stateList = []
         self.valueFunction = []
         self.actualDisposition = None
@@ -108,7 +108,7 @@ class AgentNN:
         self.actualDecision = None
         self.learningCoeff = alpha
         self.discountCoeff = gamma
-        self.modelNN = Net(n_rows=self.n_rows, n_cols=self.n_cols, n_parcel_items=self.n_item)
+        self.modelNN = Net(n_cols=self.n_cols)
         self.parcelObs = np.zeros(n_item)
         self.parcelFreq = np.zeros(n_item)
         self.tot_parcel = 0
@@ -186,8 +186,29 @@ class AgentNN:
 
         self.parcelFreq = self.parcelObs / self.tot_parcel
 
-    def defineState(self, state_disposition):
-        return copy.copy(state_disposition)
+    def defineState(self, disposition):
+        needChange = np.zeros(self.n_cols)
+        freeSpace = np.zeros(self.n_cols)
+        # Osservo la prima riga e la seconda riga di ciascuna colonna
+        for j in range(0, self.n_cols):
+            if disposition[0, j] == 0:
+                freeSpace[j] = 1
+            done = False
+            i = 0
+            while not done:
+                if i + 2 >= self.n_rows:
+                    done = True
+                if disposition[i, j] == 0 and disposition[i + 1, j] != 0 and disposition[
+                    i + 2, j] != 0 and i + 2 < self.n_rows:
+                    if self.parcelFreq[disposition[i + 1, j]] > self.parcelFreq[disposition[i + 2, j]]:
+                        needChange[j] = 1
+                    done = True
+
+        stateDict = {
+            'freeSpace': freeSpace,
+            'needChange': needChange
+        }
+        return stateDict
 
     def explore_decision(self):
         choice = np.random.binomial(1, p=self.eps)
@@ -200,7 +221,7 @@ class AgentNN:
 
     def exploration(self):
         decision = []
-        number_mov = np.random.randint(0, self.n_moves + 1)
+        number_mov = 1
         n_rep = 0
         n_action = 0
         while n_action < number_mov:
@@ -209,7 +230,7 @@ class AgentNN:
                 print("HELP")
             col1 = np.random.randint(0, self.n_cols)
             col2 = np.random.randint(0, self.n_cols)
-            if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
+            if self.actualState['freeSpace'][col2] == 0 and col1 != col2:
                 # eseguo azione se le colonne non sono identiche e se la colonna 2 non è piena e se la colonna 1 non
                 # è vuota
                 decision.append(
@@ -356,16 +377,9 @@ class AgentNN:
         pass
 
     def toTorchTensor(self, state):
-        state_d = state.disposition
-        # Definisco stato nella forma che voglio
-        state_np = np.zeros(shape=(self.n_item, self.n_rows, self.n_cols))
-        for item in range(self.n_item):
-            for i in range(0, self.n_rows):
-                for j in range(0, self.n_cols):
-                    if state_d[i, j] == (item + 1):
-                        state_np[item, i, j] = 1
-        # lo trasformo in tensore
-        # state_t = torch.from_numpy(state_np)
+        state_np = np.zeros(2*self.n_cols)
+        state_np[0:self.n_cols-1] = state['freeSpace']
+        state_np[self.n_cols:2*self.n_cols - 1] = state['needChange']
         return torch.from_numpy(state_np).to(torch.float32)
 
     def learn(self, iterations=10, learning_rate=0.1):
@@ -413,6 +427,7 @@ class AgentNN:
             obs = self.env.reset()
             self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
             state = self.defineState(self.actualDisposition)
+            self.actualState = copy.copy(state)
             decision = self.explore_decision()
             obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
             for t in range(self.time_limit):
@@ -424,12 +439,13 @@ class AgentNN:
                 obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
                 self.updateQValuePD(old=state, decision=decision, reward=reward, new=next_state)
                 state = copy.deepcopy(next_state)
+                self.actualState = copy.copy(state)
 
         print("Simulation has finished!")
 
     def agentDecisionRandom(self, grid, n_trials=3):
         # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
-        action_list = np.zeros((n_trials, 2*self.n_moves), dtype='int')
+        action_list = np.zeros((n_trials, 2 * self.n_moves), dtype='int')
         decision_list = []
         value_list = []
         for k in range(0, n_trials):
@@ -451,12 +467,12 @@ class AgentNN:
             i = 0
             fake_grid = copy.deepcopy(grid)
             while i < self.n_moves:
-                if self.actualDisposition.disposition[0, action_list[k, i+1]] != 0:
+                if self.actualDisposition.disposition[0, action_list[k, i + 1]] != 0:
                     value = 100000
                     value_list.append(value)
                     i = self.n_moves  # per uscire dal while
                 else:
-                    fake_grid._move(action_list[k, i], action_list[k, i+1])
+                    fake_grid._move(action_list[k, i], action_list[k, i + 1])
                     i += 2
             statePostDecision = self.defineState(fake_grid)
             statePDTensor = self.toTorchTensor(state=statePostDecision)
@@ -495,6 +511,5 @@ class AgentNN:
 
         else:
             decision_list = []
-
 
         return decision_list
