@@ -1,9 +1,12 @@
+import copy
+
 import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+
 
 def sort_columns_descending(matrix):
     # Count the number of non-zero elements in each column
@@ -20,6 +23,27 @@ def sort_columns_descending(matrix):
     current_positions[sorted_indices] = np.arange(sorted_indices.size)
 
     return sorted_matrix, current_positions
+
+
+def restore_original_order(sorted_matrix, current_positions):
+    # Get the indices that would restore the original order
+    original_indices = np.argsort(current_positions)
+
+    # Restore the original order of the columns
+    original_matrix = sorted_matrix[:, original_indices]
+
+    # Update the current positions of the columns
+    current_positions[original_indices] = np.arange(original_indices.size)
+
+    return original_matrix, current_positions
+
+
+def transformedAction(action, current_positions):
+    for move in action:
+        move['col1'] = current_positions[move['col1']]
+        move['col2'] = current_positions[move['col2']]
+    return action
+
 
 
 def compare_np_arr(state1, state2):
@@ -49,9 +73,9 @@ def compareDisposition(a, b):
 
 
 def compareState(state1, state2):
-    state1_disposition = state1.disposition
-    state2_disposition = state2.disposition
-    return compare_np_arr(state1_disposition, state2_disposition)
+    state1 = state1.disposition
+    state2 = state2.disposition
+    return compare_np_arr(state1, state2)
 
 
 def train_loop(dataloader, model, loss_fn, optimizer):

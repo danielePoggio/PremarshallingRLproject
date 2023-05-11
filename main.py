@@ -37,7 +37,7 @@ def marshallingWithAgent(enviroment, agente):
     for t in range(time_limit):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
-        decision = agente.agentDecisionRandom(grid=agente.actualDisposition, n_trials=10)  # prende decisione
+        decision = agente.agentDecisionRandom(grid=agente.actualDisposition, probStop=10)  # prende decisione
         action = agente.get_actionPostDecision(obs=obs)  # risolve ordini
         print(action)
         obs, cost, info = enviroment.step(decision + action)

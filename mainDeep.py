@@ -1,7 +1,7 @@
 import copy
 
 from env.warehouse import Warehouse
-from agent.AgentNN2 import AgentNN2
+from agent.AgentNN2 import AgentNN2 as AgentNN
 
 
 
@@ -27,6 +27,7 @@ def marshallingWithoutAgent(enviroment, agente):
 
 
 def marshallingWithAgent(enviroment, agente):
+    agente.learnFrequency(num_episode=1)
     # Eseguiamo apprendimento dell'agente
     agente.learn(iterations=10)
     # resettiamo ambiente
@@ -37,7 +38,7 @@ def marshallingWithAgent(enviroment, agente):
     for t in range(time_limit):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
-        decision = agente.agentDecisionRandom(grid=agente.actualDisposition, n_trials=10)  # prende decisione
+        decision = agente.agentDecision(grid=agente.actualDisposition, probStop=0.1)  # prende decisione
         action = agente.get_action(obs=obs)  # risolve ordini
         print(action)
         obs, cost, info = enviroment.step(decision + action)
@@ -64,53 +65,48 @@ if __name__ == '__main__':
     )
     obs = env.reset()
     # env.plot()
-    agent = AgentNN2(env, alpha=0.6, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit)
-    # # agent.learnFrequency(num_episode=1)
-    # # agent.learn(iterations=10)
-    # obs = env.reset()
-    # agent.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-    # tot_cost = 0
-    # # Partiamo con le iterazioni
-    # for t in range(time_limit):
-    #     print('Order:', obs['order'])
-    #     print('New Parcel:', obs['new_parcel'])
-    #     decision = []
-    #     # decision = agent.agentDecisionRandom(grid=agent.actualDisposition, n_trials=10)  # prende decisione
-    #     action = agent.get_action(obs=obs)  # risolve ordini
-    #     print(action)
-    #     obs, cost, info = env.step(decision + action)
-    #     agent.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-    #     tot_cost += cost
-    #     print(env.disposition.disposition)
-    #     # env.plot()
-    #     print("---")
-    # print(tot_cost)
-
-    # costNoAgent = marshallingWithoutAgent(env, agent)
-    # costAgent = marshallingWithAgent(env, agent)
-
-    # L'idea è quella di vedere cosa succede cambiando il numero di parametri
+    agent = AgentNN(env, alpha=0.6, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit)
+    agent.learnFrequency(num_episode=1)
+    agent.learn(iterations=1)
+    obs = env.reset()
+    agent.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+    tot_cost = 0
+    # Partiamo con le iterazioni
+    for t in range(time_limit):
+        print('Order:', obs['order'])
+        print('New Parcel:', obs['new_parcel'])
+        decision = agent.agentDecision(grid=agent.actualDisposition, probStop=0.0010)  # prende decisione
+        print('Decision:', decision)
+        action = agent.get_action(obs=obs)  # risolve ordini
+        print(action)
+        obs, cost, info = env.step(decision + action)
+        agent.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+        tot_cost += cost
+        print(env.disposition.disposition)
+        # env.plot()
+        print("---")
+    print(tot_cost)
     costNoAgent = []
     costAgent = []
-    for n_cols in [2, 3, 7]:
-        env = Warehouse(
-            n_parcel_types=n_parcel_types,
-            n_rows=n_rows,
-            n_cols=n_cols
-        )
-        obs = env.reset()
-        # env.plot()
-        agent = AgentNN(
-            warehouse=env,
-            alpha=0.4,
-            gamma=0.9,
-            n_item=n_parcel_types,
-            n_moves=2,  # viene fatta questa ipotesi per gestire al meglio la state-trasformation
-            time_limit=time_limit,
-            eps=0.3
-        )
-        costNoAgent.append(marshallingWithoutAgent(env, agent))
-        costAgent.append(marshallingWithAgent(env, agent))
+    # for n_cols in [3]:
+    #     env = Warehouse(
+    #         n_parcel_types=n_parcel_types,
+    #         n_rows=n_rows,
+    #         n_cols=n_cols
+    #     )
+    #     obs = env.reset()
+    #     # env.plot()
+    #     agent = AgentNN(
+    #         warehouse=env,
+    #         alpha=0.4,
+    #         gamma=0.9,
+    #         n_item=n_parcel_types,
+    #         n_moves=1,  # viene fatta questa ipotesi per gestire al meglio la state-trasformation
+    #         time_limit=time_limit,
+    #         eps=0.3
+    #     )
+    #     # costNoAgent.append(marshallingWithoutAgent(env, agent))
+    #     costAgent.append(marshallingWithAgent(env, agent))
 
     print('Finito!')
     print('Cost no Agent:', costNoAgent)
