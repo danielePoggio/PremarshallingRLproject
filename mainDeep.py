@@ -1,7 +1,7 @@
 import copy
 
 from env.warehouse import Warehouse
-from AgentNN4 import AgentNN
+from agent import AgentNN2 as AgentNN
 
 
 
@@ -44,25 +44,6 @@ if __name__ == '__main__':
     print(tot_cost)
     costNoAgent = []
     costAgent = []
-    # for n_cols in [3]:
-    #     env = Warehouse(
-    #         n_parcel_types=n_parcel_types,
-    #         n_rows=n_rows,
-    #         n_cols=n_cols
-    #     )
-    #     obs = env.reset()
-    #     # env.plot()
-    #     agent = AgentNN(
-    #         warehouse=env,
-    #         alpha=0.4,
-    #         gamma=0.9,
-    #         n_item=n_parcel_types,
-    #         n_moves=1,  # viene fatta questa ipotesi per gestire al meglio la state-trasformation
-    #         time_limit=time_limit,
-    #         eps=0.3
-    #     )
-    #     # costNoAgent.append(marshallingWithoutAgent(env, agent))
-    #     costAgent.append(marshallingWithAgent(env, agent))
 
     print('Finito!')
     print('Cost no Agent:', costNoAgent)

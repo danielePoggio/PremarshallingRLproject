@@ -1,84 +1,41 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import copy
-from agent.agentPostDecision import AgentPostDecision
+from agent import AgentNN as Agent
 from env.warehouse import Warehouse
+from utils import *
 
-
-def marshallingWithoutAgent(enviroment, agente):
-    obs = enviroment.reset()
-    agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])  # azione necessaria percè l'agente veda
-    # l'ambiente
-    tot_cost = 0
-    for t in range(time_limit):
-        print('Order:', obs['order'])
-        print('New Parcel:', obs['new_parcel'])
-        decision = []  # siccome l'agente non prende decisioni è come se la lista delle decisioni fosse vuota
-        action = agente.get_action(obs=obs)  # risolve ordini
-        print(action)
-        obs, cost, info = enviroment.step(decision + action)
-        agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-        tot_cost += cost
-        print(enviroment.disposition.disposition)
-        # env.plot()
-        print("---")
-    print(tot_cost)
-    return tot_cost
-
-
-def marshallingWithAgent(enviroment, agente):
-    # Eseguiamo apprendimento dell'agente
-    agente.learnFrequency(num_episode=10)
-    agente.learn(iterations=10)
-    # resettiamo ambiente
-    obs = enviroment.reset()
-    tot_cost = 0
-    # Partiamo con le iterazioni
-    for t in range(time_limit):
-        print('Order:', obs['order'])
-        print('New Parcel:', obs['new_parcel'])
-        decision = agente.agentDecisionRandom(grid=agente.actualDisposition, probStop=10)  # prende decisione
-        action = agente.get_action(obs=obs)  # risolve ordini
-        print(action)
-        obs, cost, info = enviroment.step(decision + action)
-        agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-        tot_cost += cost
-        print(enviroment.disposition.disposition)
-        # env.plot()
-        print("---")
-    print(tot_cost)
-    return tot_cost
-
-
-# np.random.seed(1)
 
 if __name__ == '__main__':
     # parameters
     n_rows = 3
-    n_cols = 3
+    # n_cols = 3
     time_limit = 100
+    iterations = 2
     n_parcel_types = 5
     costNoAgent = []
     costAgent = []
-    for n_cols in [4]:
+    timeAgent = []
+    for n_cols in [2, 3, 4, 5]:
         env = Warehouse(
             n_parcel_types=n_parcel_types,
             n_rows=n_rows,
             n_cols=n_cols
         )
         obs = env.reset()
-        # env.plot()
-        agent = AgentPostDecision(
-            warehouse=env,
-            alpha=0.4,
-            gamma=0.9,
-            n_item=n_parcel_types,
-            n_moves=2,  # viene fatta questa ipotesi per gestire al meglio la state-trasformation
-            time_limit=time_limit,
-            eps=0.3
-        )
-        costNoAgent.append(marshallingWithoutAgent(env, agent))
-        costAgent.append(marshallingWithAgent(env, agent))
+        agent = Agent(warehouse=env, alpha=0.4, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit, eps=0.3)
+        costNoAgent.append(marshallingWithoutAgent(env, agent, time_limit))
+        cost, time = marshallingWithAgent(env, agent, time_limit, iterations)
+        costAgent.append(cost)
+        timeAgent.append(time)
+
+    plot_comparison(x_data=[2, 3, 4, 5] , y1_data=costAgent, y2_data=costNoAgent, x_label='Numero colonne Warehouse',
+                    y_label='Costo magazzino', title='', label1='Costo con agente', label2='costo senza agente')
+
+    # plot_2d_graph(x_data=[2, 3, 4, 5], y_data=costAgent, x_label='Numero colonne Warehouse', y_label='Costo magazzino',
+    #               title='Grafico costo del magazzino al variare del numero di colonne')
+    # plot_2d_graph(x_data=[2, 3, 4, 5], y_data=timeAgent, x_label='Numero colonne Warehouse', y_label='Tempo',
+    #               title='Grafico tempo di esecuzione al variare del numero di colonne')
 
     print('Finito!')
     print('Cost no Agent:', costNoAgent)

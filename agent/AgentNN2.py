@@ -7,20 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from itertools import permutations
-
-
-def compare_np_arr(state1, state2):
-    compare = (state1 == state2)
-    flag = True
-    size = compare.size
-    compare = np.reshape(compare, (size, 1))
-    n_rows, n_cols = compare.shape
-    for i in range(n_rows):
-        if not compare[i]:
-            flag = False
-            break
-
-    return flag
+from utils import train_loop, compare_np_arr
 
 
 def compareDisposition(a, b):
@@ -54,6 +41,8 @@ class Net(nn.Module):
         # n_rows*n_cols input channels, 1 output channel
 
     def forward(self, x):
+        if len(x.shape) == 1:
+            x = torch.unsqueeze(x, dim=0)
         x = torch.flatten(x, start_dim=1)
         x = F.sigmoid(self.fc1(x))
         return x
@@ -73,21 +62,21 @@ class StatePDDataset(Dataset):
         return self.data[idx], self.target[idx]
 
 
-def train_loop(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
-    for batch, (X, y) in enumerate(dataloader):
-        y = y.float()
-        # Compute prediction and loss
-        pred = model(X).float()
-        loss = loss_fn(pred.squeeze(), y)
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if batch % 100 == 0:
-            loss, current = loss.item(), (batch + 1) * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+# def train_loop(dataloader, model, loss_fn, optimizer):
+#     size = len(dataloader.dataset)
+#     for batch, (X, y) in enumerate(dataloader):
+#         y = y.float()
+#         # Compute prediction and loss
+#         pred = model(X).float()
+#         loss = loss_fn(pred.squeeze(), y)
+#         # Backpropagation
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+#
+#         if batch % 100 == 0:
+#             loss, current = loss.item(), (batch + 1) * len(X)
+#             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
 class AgentNN2:
@@ -444,7 +433,7 @@ class AgentNN2:
         state_np = np.zeros(4 * self.n_cols)
         state_np[0:self.n_cols] = state['freeSpace']
         state_np[self.n_cols:2 * self.n_cols] = state['needChange']
-        state_np[2*self.n_cols:3*self.n_cols] = state['action'][0, :]
+        state_np[2 * self.n_cols:3 * self.n_cols] = state['action'][0, :]
         state_np[3 * self.n_cols:4 * self.n_cols] = state['action'][1, :]
         return torch.from_numpy(state_np).to(torch.float32)
 
@@ -477,7 +466,7 @@ class AgentNN2:
 
         # Definiamo dataset
         training_data = StatePDDataset(X=stateDatasetList, y=target)
-        train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True)
+        train_dataloader = DataLoader(training_data, batch_size=16, shuffle=True)
         # Ora siamo pronti ad allenare la NN
         self.modelNN = self.modelNN.to(torch.float32)
         params = list(self.modelNN.parameters())
@@ -543,7 +532,7 @@ class AgentNN2:
         toll = 1.0e-02
         findMin = False
         possible_col = []
-        actionMin = np.zeros((2,self.n_cols))
+        actionMin = np.zeros((2, self.n_cols))
         valueActualState = self.valueState(grid.disposition, actionMin)
         for i in range(self.n_cols):
             possible_col.append(i)
@@ -556,7 +545,7 @@ class AgentNN2:
         kBest = -1
         for k in range(l):
             action = np.zeros((2, self.n_cols))
-            if grid.disposition[self.n_rows-1, action_list[k, 0]] != 0:
+            if grid.disposition[self.n_rows - 1, action_list[k, 0]] != 0:
                 action[0, action_list[k, 0]] = 1
                 action[1, action_list[k, 1]] = 1
             value = self.valueState(grid.disposition, action)
@@ -583,3 +572,68 @@ class AgentNN2:
 
         else:
             return findMin, []
+
+    def agentDecisionRandom(self, grid, n_trials=3, n_moves=3):
+        # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
+        action_list = np.zeros((n_trials, 2 * n_moves), dtype='int')
+        decision_list = []
+        value_list = []
+        for k in range(0, n_trials):
+            i = 0
+            n_rep = 0
+            while i < 2 * n_moves:
+                col1 = np.random.randint(0, self.n_cols)
+                col2 = np.random.randint(0, self.n_cols)
+                if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
+                    action_list[k, i] = col1
+                    action_list[k, i + 1] = col2
+                    i += 2
+                elif n_rep > 10 and self.actualDisposition.disposition[0, col2] != 0:
+                    action_list[k, i] = col1
+                    action_list[k, i + 1] = col1
+                else:
+                    n_rep += 1
+        for k in range(n_trials):
+            i = 0
+            fake_grid = copy.deepcopy(grid)
+            while i < n_moves:
+                if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
+                    value = 100000
+                    value_list.append(value)
+                    i = n_moves  # per uscire dal while
+                else:
+                    fake_grid._move(action_list[k, i], action_list[k, i + 1])
+                    i += 2
+            statePostDecision = self.defineState(fake_grid)
+            statePDTensor = self.toTorchTensor(state=statePostDecision)
+            # value = self.modelNN(statePDTensor)
+            x = self.modelNN(statePDTensor)
+            value_list.append(x.item())
+        k = np.argmin(np.array(value_list))
+        # valutiamo valore stato attuale:
+        statePostDecision = self.defineState(self.actualDisposition)
+        statePDTensor = self.toTorchTensor(state=statePostDecision)
+        value = self.modelNN(statePDTensor)
+        valueNoAction = value.detach().numpy()
+        if valueNoAction >= value_list[k]:
+            best_decision = action_list[k, :]
+            j = 0
+            while j < 2 * self.n_moves:
+                if best_decision[j] != best_decision[j + 1]:
+                    decisionDict = {
+                        'type': 'M',
+                        'col1': best_decision[j],
+                        'col2': best_decision[j + 1]
+                    }
+                    self.actualDisposition._move(
+                        col1=best_decision[j],
+                        col2=best_decision[j + 1]
+                    )
+                    decision_list.append(decisionDict)
+
+                j += 2
+
+        else:
+            decision_list = []
+
+        return decision_list

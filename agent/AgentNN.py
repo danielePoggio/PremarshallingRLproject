@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from itertools import permutations
-from utils import *
+from utils import compareState, train_loop
 
 
 class Net(nn.Module):
@@ -22,6 +22,8 @@ class Net(nn.Module):
         self.fc3 = nn.Linear(n_rows * n_cols, 1)
 
     def forward(self, x):
+        if len(x.shape) == 3:
+            x = torch.unsqueeze(x, dim=0)
         x = torch.flatten(x, start_dim=1)
         x = F.sigmoid(self.fc1(x))
         x = self.fc3(x)
@@ -42,25 +44,25 @@ class StatePDDataset(Dataset):
         return self.data[idx], self.target[idx]
 
 
-def train_loop(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
-    for batch, (X, y) in enumerate(dataloader):
-        y = y.float()
-        # Compute prediction and loss
-        pred = model(X).float()
-        loss = loss_fn(pred.squeeze(), y)
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if batch % 100 == 0:
-            loss, current = loss.item(), (batch + 1) * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+# def train_loop(dataloader, model, loss_fn, optimizer):
+#     size = len(dataloader.dataset)
+#     for batch, (X, y) in enumerate(dataloader):
+#         y = y.float()
+#         # Compute prediction and loss
+#         pred = model(X).float()
+#         loss = loss_fn(pred.squeeze(), y)
+#         # Backpropagation
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+#
+#         if batch % 100 == 0:
+#             loss, current = loss.item(), (batch + 1) * len(X)
+#             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
 class AgentNN:
-    def __init__(self, warehouse, alpha, gamma, n_item, time_limit, n_moves=2, eps=0.1):
+    def __init__(self, warehouse, alpha, gamma, n_item, time_limit, eps=0.1):
         self.stateList = []
         self.valueFunction = []
         self.actualDisposition = None
@@ -400,16 +402,15 @@ class AgentNN:
 
         print("Simulation has finished!")
 
-    def agentDecisionRandom(self, grid, n_trials=3):
+    def agentDecisionRandom(self, grid, n_trials=3, n_moves=3):
         # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
-        action_list = np.zeros((n_trials, 2 * self.n_moves), dtype='int')
+        action_list = np.zeros((n_trials, 2 * n_moves), dtype='int')
         decision_list = []
         value_list = []
         for k in range(0, n_trials):
             i = 0
             n_rep = 0
-            num_moves = np.random.randint(low=0, high=3)
-            while i < num_moves:
+            while i < 2*n_moves:
                 col1 = np.random.randint(0, self.n_cols)
                 col2 = np.random.randint(0, self.n_cols)
                 if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
@@ -424,31 +425,25 @@ class AgentNN:
         for k in range(n_trials):
             i = 0
             fake_grid = copy.deepcopy(grid)
-            while i < self.n_moves:
-                if self.actualDisposition.disposition[0, action_list[k, i + 1]] != 0:
+            while i < n_moves:
+                if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
                     value = 100000
                     value_list.append(value)
-                    i = self.n_moves  # per uscire dal while
+                    i = n_moves  # per uscire dal while
                 else:
                     fake_grid._move(action_list[k, i], action_list[k, i + 1])
                     i += 2
             statePostDecision = self.defineState(fake_grid)
             statePDTensor = self.toTorchTensor(state=statePostDecision)
             # value = self.modelNN(statePDTensor)
-            x = torch.flatten(statePDTensor)
-            x = F.sigmoid(self.modelNN.fc1(x))
-            x = self.modelNN.fc3(x)
-
-            value_list.append(x.detach().numpy())
+            x = self.modelNN(statePDTensor)
+            value_list.append(x.item())
         k = np.argmin(np.array(value_list))
         # valutiamo valore stato attuale:
         statePostDecision = self.defineState(self.actualDisposition)
         statePDTensor = self.toTorchTensor(state=statePostDecision)
-        # value = self.modelNN(statePDTensor)
-        x = torch.flatten(statePDTensor)
-        x = F.sigmoid(self.modelNN.fc1(x))
-        valueNoAction = self.modelNN.fc3(x)
-        valueNoAction = valueNoAction.detach().numpy()
+        value = self.modelNN(statePDTensor)
+        valueNoAction = value.detach().numpy()
         if valueNoAction >= value_list[k]:
             best_decision = action_list[k, :]
             j = 0

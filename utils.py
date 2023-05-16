@@ -1,6 +1,7 @@
 import copy
-
+import time
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def sort_columns_descending(matrix):
@@ -67,8 +68,8 @@ def compareDisposition(a, b):
 
 
 def compareState(state1, state2):
-    # state1 = state1.disposition
-    # state2 = state2.disposition
+    state1 = state1.disposition
+    state2 = state2.disposition
     return compare_np_arr(state1, state2)
 
 
@@ -110,18 +111,19 @@ def marshallingWithoutAgent(enviroment, agente, time_limit):
         obs, cost, info = enviroment.step(decision + action)
         agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
         tot_cost += cost
-        print(enviroment.disposition.disposition)
+        # print(enviroment.disposition.disposition)
         # env.plot()
         print("---")
     print(tot_cost)
     return tot_cost
 
 
-def marshallingWithAgent(enviroment, agente, time_limit):
+def marshallingWithAgent(enviroment, agente, time_limit, iterations):
+    start_time = time.time()
     agente.learnFrequency(num_episode=1)
     # Eseguiamo apprendimento dell'agente
-    agente.learn(iterations=10)
-    # resettiamo ambiente
+    agente.learn(iterations=iterations)
+    # Resettiamo ambiente
     obs = enviroment.reset()
     agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
     tot_cost = 0
@@ -129,17 +131,50 @@ def marshallingWithAgent(enviroment, agente, time_limit):
     for t in range(time_limit):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
-        decision = agente.agentDecision(grid=agente.actualDisposition, probStop=0.1)  # prende decisione
+        decision = agente.agentDecisionRandom(grid=agente.actualDisposition)  # prende decisione
         action = agente.get_action(obs=obs)  # risolve ordini
         print(action)
         obs, cost, info = enviroment.step(decision + action)
         agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
         tot_cost += cost
-        print(enviroment.disposition.disposition)
+        # print(enviroment.disposition.disposition)
         # env.plot()
         print("---")
     print(tot_cost)
-    return tot_cost
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    return tot_cost, elapsed_time
 
 
-def testingParameter(parameter, test_value):
+def plot_2d_graph(x_data, y_data, x_label, y_label, title):
+    # Creazione del grafico
+    plt.plot(x_data, y_data)
+
+    # Titolo del grafico
+    plt.title(title)
+
+    # Etichette degli assi
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    # Visualizzazione del grafico
+    plt.show()
+
+
+def plot_comparison(x_data, y1_data, y2_data, x_label, y_label, title, label1, label2):
+    # Creazione del grafico
+    plt.plot(x_data, y1_data, label=label1)
+    plt.plot(x_data, y2_data, label=label2)
+
+    # Titolo del grafico
+    plt.title(title)
+
+    # Etichette degli assi
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    # Mostra la legenda
+    plt.legend()
+
+    # Visualizzazione del grafico
+    plt.show()
