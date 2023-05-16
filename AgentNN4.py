@@ -61,7 +61,6 @@ def train_loop(dataloader, model, loss_fn, optimizer):
 
 class AgentNN:
     def __init__(self, warehouse, alpha, gamma, n_item, time_limit, n_moves=2, eps=0.1):
-        self.current_positions = None
         self.stateList = []
         self.valueFunction = []
         self.actualDisposition = None
@@ -155,15 +154,7 @@ class AgentNN:
         self.parcelFreq = self.parcelObs / self.tot_parcel
 
     def defineState(self, state_disposition):
-        """
-
-        :param state_disposition: grid disposizione particolare
-        :return: sorted_matrix: matrice riordinata in ordine
-        decrescente di oggetti nelle colonne
-        :return: current_positions: vettore che indica come sono state
-        riordinate le colonne v[i]=nuova posizione i_esima colonna originale
-        """
-        sorted_matrix, current_positions = sort_columns_descending(copy.deepcopy(state_disposition.disposition))
+        sorted_matrix, current_positions = sort_columns_descending(state_disposition.disposition)
         return sorted_matrix, current_positions
 
     def explore_decision(self):
@@ -203,7 +194,8 @@ class AgentNN:
         return decision
 
     def exploitation(self):
-        state, cp = self.defineState(self.actualDisposition)
+        decision = []
+        state = self.defineState(self.actualDisposition)
         # allora devo valutare il minimo tra i Q-Factor
         findState = 0
         q_factor = self.Q_Factor
@@ -212,22 +204,25 @@ class AgentNN:
             if compareState(dictQFactor['state'],
                             self.actualDisposition):  # ho trovato lo stato
                 findState = 1
-                original_indices = np.argsort(cp)
-                changeDisposition = transformedAction(dictQFactor['bestDecision'], original_indices)  # selezione l'azione migliore che conosco
+                changeDisposition = dictQFactor['bestDecision']  # selezione l'azione migliore che conosco
                 for action in changeDisposition:
-                    col1 = action['col1']
-                    col2 = action['col2']
-                    # ora devo riaggiornare le colonne della configurazione esterna per adattarle a quella interna
+                    if self.actualDisposition.disposition[0, action['col2']] == 0:
+                        col1 = action['col1']
+                        col2 = action['col2']
 
-                    self.actualDisposition._move(
-                        col1,
-                        col2
-                    )
+                        self.actualDisposition._move(
+                            col1,
+                            col2
+                        )
+                        decision.append(action)
+                    else:
+                        break
+
                 break
         if findState == 0:  # non ho trovato lo stato
-            changeDisposition = self.exploration()
+            decision = self.exploration()
 
-        return changeDisposition
+        return decision
 
     def updateQValuePD(self, old, decision, reward, new):  # aggiorno Q_Factor
         q_factor = self.Q_Factor
@@ -335,7 +330,7 @@ class AgentNN:
         pass
 
     def toTorchTensor(self, state):
-        state_d = sort_columns_descending(state.disposition)
+        state_d = state.disposition
         # Definisco stato nella forma che voglio
         state_np = np.zeros(shape=(self.n_item, self.n_rows, self.n_cols))
         for item in range(self.n_item):
@@ -357,11 +352,11 @@ class AgentNN:
                 self.valueFunction.append(state_decision['Q_factor'])
                 statePostDecision = copy.copy(dictQ['state'])
                 for move in action:
-                    if statePostDecision.disposition[0, move['col2']] == 0:
-                        statePostDecision._move(
-                            move['col1'],
-                            move['col2']
-                        )
+                    if statePostDecision[0, move['col2']] == 0:
+                        if findNonZeroElem(statePostDecision, move['col1']) != -1:
+                            statePostDecision[findNonZeroElem(statePostDecision, move['col2'])+1, move['col2']] = \
+                                statePostDecision[findNonZeroElem(statePostDecision, move['col1'])+1, move['col1']]
+                            statePostDecision[findNonZeroElem(statePostDecision, move['col1']) + 1, move['col1']] = 1
                         target.append(float(state_decision['Q_factor']))
                     else:
                         target.append(float(10000))
@@ -391,20 +386,17 @@ class AgentNN:
         for _ in tqdm(range(iterations)):
             obs = self.env.reset()
             self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-            state, current_positions = self.defineState(self.actualDisposition)
-            self.current_positions = current_positions
+            state, cp = self.defineState(self.actualDisposition)
             decision = self.explore_decision()
             obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
             for t in range(self.time_limit):
                 action = self.get_action(obs=obs)
                 obs, reward, info = self.env.step(decision + action)
                 self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-                next_state, current_positions = self.defineState(self.actualDisposition)
-                self.current_positions = current_positions
+                next_state, cp = self.defineState(self.actualDisposition)
                 decision = self.explore_decision()
                 obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
-                decisionForUpdate = transformedAction(decision, current_positions)
-                self.updateQValuePD(old=state, decision=decisionForUpdate, reward=reward, new=next_state)
+                self.updateQValuePD(old=state, decision=decision, reward=reward, new=next_state)
                 state = copy.deepcopy(next_state)
 
         print("Simulation has finished!")
@@ -417,7 +409,8 @@ class AgentNN:
         for k in range(0, n_trials):
             i = 0
             n_rep = 0
-            while i < self.n_moves:
+            num_moves = np.random.randint(low=0, high=3)
+            while i < num_moves:
                 col1 = np.random.randint(0, self.n_cols)
                 col2 = np.random.randint(0, self.n_cols)
                 if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
@@ -481,7 +474,6 @@ class AgentNN:
         return decision_list
 
     def valueState(self, state):
-        state, _ = sort_columns_descending(state.disposition)
         statePostDecision = self.defineState(state)
         statePDTensor = self.toTorchTensor(state=statePostDecision)
         # value = self.modelNN(statePDTensor)

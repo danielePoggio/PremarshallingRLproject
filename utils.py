@@ -1,11 +1,6 @@
 import copy
 
 import numpy as np
-import torch
-from torch import nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
 
 
 def sort_columns_descending(matrix):
@@ -45,7 +40,6 @@ def transformedAction(action, current_positions):
     return action
 
 
-
 def compare_np_arr(state1, state2):
     compare = (state1 == state2)
     flag = True
@@ -73,9 +67,16 @@ def compareDisposition(a, b):
 
 
 def compareState(state1, state2):
-    state1 = state1.disposition
-    state2 = state2.disposition
+    # state1 = state1.disposition
+    # state2 = state2.disposition
     return compare_np_arr(state1, state2)
+
+
+def findNonZeroElem(matrice, colonna):
+    for riga, elemento in enumerate(matrice):
+        if elemento[colonna] != 0:
+            return riga
+    return -1
 
 
 def train_loop(dataloader, model, loss_fn, optimizer):
@@ -93,3 +94,52 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         if batch % 100 == 0:
             loss, current = loss.item(), (batch + 1) * len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+
+
+def marshallingWithoutAgent(enviroment, agente, time_limit):
+    obs = enviroment.reset()
+    agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])  # azione necessaria perchè l'agente veda
+    # l'ambiente
+    tot_cost = 0
+    for t in range(time_limit):
+        print('Order:', obs['order'])
+        print('New Parcel:', obs['new_parcel'])
+        decision = []  # siccome l'agente non prende decisioni è come se la lista delle decisioni fosse vuota
+        action = agente.get_action(obs=obs)  # risolve ordini
+        print(action)
+        obs, cost, info = enviroment.step(decision + action)
+        agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+        tot_cost += cost
+        print(enviroment.disposition.disposition)
+        # env.plot()
+        print("---")
+    print(tot_cost)
+    return tot_cost
+
+
+def marshallingWithAgent(enviroment, agente, time_limit):
+    agente.learnFrequency(num_episode=1)
+    # Eseguiamo apprendimento dell'agente
+    agente.learn(iterations=10)
+    # resettiamo ambiente
+    obs = enviroment.reset()
+    agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+    tot_cost = 0
+    # Partiamo con le iterazioni
+    for t in range(time_limit):
+        print('Order:', obs['order'])
+        print('New Parcel:', obs['new_parcel'])
+        decision = agente.agentDecision(grid=agente.actualDisposition, probStop=0.1)  # prende decisione
+        action = agente.get_action(obs=obs)  # risolve ordini
+        print(action)
+        obs, cost, info = enviroment.step(decision + action)
+        agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+        tot_cost += cost
+        print(enviroment.disposition.disposition)
+        # env.plot()
+        print("---")
+    print(tot_cost)
+    return tot_cost
+
+
+def testingParameter(parameter, test_value):

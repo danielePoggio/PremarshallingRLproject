@@ -14,7 +14,7 @@ def marshallingWithoutAgent(enviroment, agente):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
         decision = []  # siccome l'agente non prende decisioni è come se la lista delle decisioni fosse vuota
-        action = agente.get_actionPostDecision(obs=obs)  # risolve ordini
+        action = agente.get_action(obs=obs)  # risolve ordini
         print(action)
         obs, cost, info = enviroment.step(decision + action)
         agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
@@ -38,7 +38,7 @@ def marshallingWithAgent(enviroment, agente):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
         decision = agente.agentDecisionRandom(grid=agente.actualDisposition, probStop=10)  # prende decisione
-        action = agente.get_actionPostDecision(obs=obs)  # risolve ordini
+        action = agente.get_action(obs=obs)  # risolve ordini
         print(action)
         obs, cost, info = enviroment.step(decision + action)
         agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])

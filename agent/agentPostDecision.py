@@ -73,7 +73,7 @@ class AgentPostDecision:
         # dove la lista in decisionsKnown è composta da dizionari del tipo {'decision': decision, 'Q_factor': Q}
         # SERVE PER RIDURRE TEMPO DI RICERCA COPPIA STATI-AZIONE
 
-    def get_actionPostDecision(self, obs):  # aggiornare sempre cosa vede l'agente!
+    def get_action(self, obs):  # aggiornare sempre cosa vede l'agente!
         self.n_time += 1
         act = []
         #
@@ -132,7 +132,7 @@ class AgentPostDecision:
             # print('Order:', obs['order'])
             # print('New Parcel:', obs['new_parcel'])
             # obs['actual_warehouse'] = agent.actualDisposition
-            action = self.get_actionPostDecision(obs=obs)
+            action = self.get_action(obs=obs)
             # print(action)
             obs, cost, info = self.env.step(action)
             for parcel in obs['order']:
@@ -174,61 +174,6 @@ class AgentPostDecision:
             'elem_last_cols': two_elem_col
         }
         return stateDict
-
-    def greedy_eps_decision(self, state):
-        choice = np.random.binomial(1, p=self.eps)
-        if choice == 1:  # explore action space!
-            decision = self.explore_action()
-        else:  # exploitation
-            # allora devo valutare il minimo tra i Q-Factor
-            findState = 0
-            q_factor = self.Q_Factor
-            for dictQFactor in q_factor:
-                # guardare bene l'if perchè tratta vettori di lunghezza diversa!!
-                if compareState(dictQFactor['state'], state):  # ho trovato lo stato
-                    findState = 1
-                    decision = dictQFactor['bestDecision']  # selezione l'azione migliore che conosco
-                    for action in decision:
-                        col1 = action['col1']
-                        col2 = action['col2']
-
-                        self.actualDisposition._move(
-                            col1,
-                            col2
-                        )
-            if findState == 0:
-                decision = self.explore_action()
-
-        self.actualDecision = decision
-        return decision
-
-    def explore_action(self):
-        decision = []
-        n_col = self.n_cols
-        number_mov = self.n_moves
-        n_rep = 0
-        n_action = 0
-        while n_action < number_mov:
-            n_rep += 1
-            if n_rep > 1000:
-                print("HELP")
-            col1 = np.random.randint(0, n_col)
-            col2 = np.random.randint(0, n_col)
-            # if state['freeSpace'][col2] < self.n_rows and col1 != col2:
-            if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
-                # eseguo azione se le colonne non sono identiche e se la colonna 2 non è piena
-                decision.append(
-                    {'type': 'M', 'col1': col1, 'col2': col2}
-                )
-                # self.actualDisposition._move(
-                #     col1,
-                #     col2
-                # )
-                n_action += 1
-                if n_rep == 900:
-                    decision == []
-                    break
-        return decision
 
     def updateQValuePD(self, old, decision, reward, new):  # aggiorno Q_Factor
         q_factor = self.Q_Factor
@@ -339,76 +284,6 @@ class AgentPostDecision:
         # return np.reshape(state, 2*self.n_cols).tolist()
         return state['freeSpace'].tolist() + np.reshape(state['elem_last_cols'], 2 * self.n_cols).tolist()
 
-    def learnPostDecision(self, iterations=10):
-        for _ in tqdm(range(iterations)):
-            obs = self.env.reset()  # faccio resettare da capo l'ambiente
-            for t in range(self.time_limit):
-                self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])  # Agente vedo stato
-                state = self.defineState(self.actualDisposition.disposition)  # Agente estrapola info che gli servono
-                decision = self.greedy_eps_decision(state)
-                actOrder = self.get_actionPostDecision(obs)  # g2 nella pipeline
-                action = decision + actOrder
-                obs, reward, info = self.env.step(action)
-
-                whatsee = compareDisposition(self.actualDisposition.disposition, obs['actual_warehouse'].disposition)
-                if not whatsee:
-                    print('Alert!')
-                    print(self.actualDisposition.disposition == obs['actual_warehouse'].disposition)
-                next_state = self.defineState(obs['actual_warehouse'].disposition)
-                self.updateQValuePD(old=state, decision=decision, reward=reward, new=next_state)
-        # IDEA CHIAVE: Q(s,a) = V(s^a) cioè il post-decision state!
-        n_explored_state = len(self.Q_Factor)
-        i = 0
-        for dictQ in self.Q_Factor:
-            for state_decision in dictQ['decisionsKnown']:
-                action = state_decision['decision']
-                self.valueFunction.append(state_decision['Q_factor'])
-                statePostDecision = copy.copy(dictQ['state'])
-                for move in action:
-                    col1 = move['col1']
-                    col2 = move['col2']
-                    if statePostDecision[0, col1] != 0:
-                        temp = statePostDecision[0, col1]
-                        statePostDecision[0, col1] = 0
-                        if statePostDecision[0, col2] != 0:
-                            statePostDecision[1, col2] = statePostDecision[0, col2]
-                            statePostDecision[0, col2] = temp
-                        elif statePostDecision[0, col2] == 0 and statePostDecision[1, col2] != 0:
-                            statePostDecision[0, col2] = temp
-                        else:
-                            statePostDecision[1, col2] = 0
-                    elif statePostDecision[0, col1] == 0 and statePostDecision[1, col1] != 0:
-                        temp = statePostDecision[1, col1]
-                        statePostDecision[1, col1] = 0
-                        if statePostDecision[0, col2] != 0:
-                            statePostDecision[1, col2] = statePostDecision[0, col2]
-                            statePostDecision[0, col2] = temp
-                        elif statePostDecision[0, col2] == 0 and statePostDecision[1, col2] != 0:
-                            statePostDecision[0, col2] = temp
-                        else:
-                            statePostDecision[1, col2] = 0
-                    elif statePostDecision[0, col1] == 0 and statePostDecision[1, col1] == 0:
-                        print('Non si può fare nulla!')
-
-                    # statePostDecision._move(
-                    #     move['col1'],
-                    #     move['col2']
-                    # )
-                self.stateList.append(self.stateRegression(stateDict=state_decision))
-
-        X = np.array(self.stateList, dtype='int32')
-        y = np.array(self.valueFunction)
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=101)
-        lin_model = linear_model.LinearRegression()
-        modelNN = MLPRegressor()
-        lin_model.fit(X_train, y_train)
-        modelNN.fit(X_train, y_train)
-        print('R^2 of NN:', modelNN.score(X_test, y_test))
-        print('R^2 of Linear Model:', lin_model.score(X_test, y_test))
-        self.modelNN = modelNN
-        self.lin_model = lin_model
-
     def learn(self, iterations=10):
         for _ in tqdm(range(iterations)):
             obs = self.env.reset()  # faccio resettare da capo l'ambiente
@@ -417,7 +292,7 @@ class AgentPostDecision:
                 state = self.defineState(self.actualDisposition.disposition)  # Agente estrapola info che gli servono
                 decision = self.explore_decision(state)
                 obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
-                actOrder = self.get_actionPostDecision(obs)  # g2 nella pipeline
+                actOrder = self.get_action(obs)  # g2 nella pipeline
                 action = decision + actOrder
                 obs, reward, info = self.env.step(action)
                 whatsee = compareDisposition(self.actualDisposition.disposition, obs['actual_warehouse'].disposition)
