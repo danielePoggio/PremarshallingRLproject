@@ -1,17 +1,10 @@
-#!/usr/bin/python3
-# -*- coding: utf-8 -*-
-import copy
 from agent import AgentNN2 as Agent
 from env.warehouse import Warehouse
-from utils import *
+from utils import marshallingWithoutAgent
+from utils import marshallingWithAgentNN2 as marshallingWithAgentNN
+from utils import plot_comparison, plot_2d_graph
 
-if __name__ == '__main__':
-    # Experiments:
-    expColumns = False
-    expItems = False
-    expIterations = False
-    expLearningRateRL = True
-
+def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
     if expColumns:
         alpha = 0.9
         n_rows = 3
@@ -33,7 +26,7 @@ if __name__ == '__main__':
             obs = env.reset()
             agent = Agent(warehouse=env, alpha=alpha, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit, eps=0.3)
             costNoAgent.append(marshallingWithoutAgent(env, agent, time_limit))
-            cost, time, no_empty_decision = marshallingWithAgentNN2(env, agent, time_limit, iterations)
+            cost, time, no_empty_decision = marshallingWithAgentNN(env, agent, time_limit, iterations)
             costAgent.append(cost)
             timeAgent.append(time)
             numTakenDecision.append(no_empty_decision)
@@ -65,7 +58,7 @@ if __name__ == '__main__':
             obs = env.reset()
             agent = Agent(warehouse=env, alpha=alpha, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit, eps=0.3)
             costNoAgent.append(marshallingWithoutAgent(env, agent, time_limit))
-            cost, time, no_empty_decision = marshallingWithAgentNN2(env, agent, time_limit, iterations)
+            cost, time, no_empty_decision = marshallingWithAgentNN(env, agent, time_limit, iterations)
             costAgent.append(cost)
             timeAgent.append(time)
             numTakenDecision.append(no_empty_decision)
@@ -98,7 +91,7 @@ if __name__ == '__main__':
             obs = env.reset()
             agent = Agent(warehouse=env, alpha=alpha, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit, eps=0.3)
             costNoAgent.append(marshallingWithoutAgent(env, agent, time_limit))
-            cost, time, no_empty_decision = marshallingWithAgentNN2(env, agent, time_limit, iterations)
+            cost, time, no_empty_decision = marshallingWithAgentNN(env, agent, time_limit, iterations)
             costAgent.append(cost)
             timeAgent.append(time)
             numTakenDecision.append(no_empty_decision)
@@ -130,7 +123,7 @@ if __name__ == '__main__':
             obs = env.reset()
             agent = Agent(warehouse=env, alpha=alpha, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit, eps=0.3)
             costNoAgent.append(marshallingWithoutAgent(env, agent, time_limit))
-            cost, time, no_empty_decision = marshallingWithAgentNN2(env, agent, time_limit, iterations)
+            cost, time, no_empty_decision = marshallingWithAgentNN(env, agent, time_limit, iterations)
             costAgent.append(cost)
             timeAgent.append(time)
             numTakenDecision.append(no_empty_decision)
@@ -140,5 +133,3 @@ if __name__ == '__main__':
                         y_label='Costo magazzino', title='', label1='Costo con agente', label2='costo senza agente')
         plot_2d_graph(learningRateRL_list, timeAgent, 'Learning Rate Agente', 'Tempo esecuzione', '')
         plot_2d_graph(learningRateRL_list, numTakenDecision, 'Learning Rate Agente', 'Numero di decisioni prese', '')
-
-    print('Finito!')

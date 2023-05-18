@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+
 def sort_columns_descending(matrix):
     # Count the number of non-zero elements in each column
     counts = np.count_nonzero(matrix, axis=0)
@@ -118,7 +119,7 @@ def marshallingWithoutAgent(enviroment, agente, time_limit):
     return tot_cost
 
 
-def marshallingWithAgent(enviroment, agente, time_limit, iterations):
+def marshallingWithAgentNN(enviroment, agente, time_limit, iterations):
     start_time = time.time()
     agente.learnFrequency(num_episode=1)
     # Eseguiamo apprendimento dell'agente
@@ -131,11 +132,12 @@ def marshallingWithAgent(enviroment, agente, time_limit, iterations):
     for t in range(time_limit):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
-        decision = agente.agentDecisionRandom(grid=agente.actualDisposition)  # prende decisione
+        decision = agente.agentDecisionRandom(grid=agente.actualDisposition, n_trials=3, n_moves=3)  # prende decisione
+        obs['actual_warehouse'].disposition = copy.deepcopy(agente.actualDisposition.disposition)
         action = agente.get_action(obs=obs)  # risolve ordini
         print(action)
         obs, cost, info = enviroment.step(decision + action)
-        agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+        agente.actualDisposition.disposition = copy.deepcopy(obs['actual_warehouse'].disposition)
         tot_cost += cost
         # print(enviroment.disposition.disposition)
         # env.plot()
@@ -145,6 +147,40 @@ def marshallingWithAgent(enviroment, agente, time_limit, iterations):
     elapsed_time = end_time - start_time
     return tot_cost, elapsed_time
 
+def marshallingWithAgentNN2(enviroment, agente, time_limit, iterations):
+    start_time = time.time()
+    agente.learnFrequency(num_episode=1)
+    # Eseguiamo apprendimento dell'agente
+    agente.learn(iterations=iterations)
+    # Resettiamo ambiente
+    obs = enviroment.reset()
+    agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+    tot_cost = 0
+    no_empty_decisions = 0
+    # Partiamo con le iterazioni
+    for t in range(time_limit):
+        # Stampiamo ordini e nuovi arrivi
+        print('Order:', obs['order'])
+        print('New Parcel:', obs['new_parcel'])
+        # Agente prende decisione in base allo stato che osserva
+        decision = agente.agentDecision(grid=copy.deepcopy(agente.actualDisposition))  # prende decisione
+        if decision != []:
+            no_empty_decisions += 1
+        # Aggiorno obs per farlo funzionare in get_action
+        obs['actual_warehouse'] = copy.deepcopy(agente.actualDisposition)
+        action = agente.get_action(obs=obs)  # risolve ordini
+        print(action)
+        obs, cost, info = enviroment.step(decision + action)
+        # Agente osserva nuova disposizione per prendere decisione futura
+        agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+        tot_cost += cost
+        # print(enviroment.disposition.disposition)
+        # env.plot()
+        print("---")
+    print(tot_cost)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    return tot_cost, elapsed_time, no_empty_decisions
 
 def plot_2d_graph(x_data, y_data, x_label, y_label, title):
     # Creazione del grafico
@@ -178,3 +214,8 @@ def plot_comparison(x_data, y1_data, y2_data, x_label, y_label, title, label1, l
 
     # Visualizzazione del grafico
     plt.show()
+
+
+
+
+

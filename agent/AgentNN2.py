@@ -202,67 +202,6 @@ class AgentNN2:
         }
         return stateDict
 
-    # def explore_decision(self):
-    #     choice = np.random.binomial(1, p=self.eps)
-    #     if choice == 1:
-    #         decision = self.exploration()
-    #     else:
-    #         decision = self.exploitation()
-    #     self.actualDecision = decision
-    #     return decision
-    #
-    # def exploration(self):
-    #     decision = []
-    #     number_mov = 1
-    #     n_rep = 0
-    #     n_action = 0
-    #     while n_action < number_mov:
-    #         n_rep += 1
-    #         if n_rep > 1000:
-    #             print("HELP")
-    #         col1 = np.random.randint(0, self.n_cols)
-    #         col2 = np.random.randint(0, self.n_cols)
-    #         if self.actualDisposition.disposition[0,col2] == 0 and col1 != col2:
-    #             # eseguo azione se le colonne non sono identiche e se la colonna 2 non è piena e se la colonna 1 non
-    #             # è vuota
-    #             decision.append(
-    #                 {'type': 'M', 'col1': col1, 'col2': col2}
-    #             )
-    #             self.actualDisposition._move(
-    #                 col1,
-    #                 col2
-    #             )
-    #             n_action += 1
-    #             if n_rep == 900:
-    #                 decision == []
-    #                 break
-    #     return decision
-    #
-    # def exploitation(self):
-    #     state = self.defineState(self.actualDisposition.disposition)
-    #     # allora devo valutare il minimo tra i Q-Factor
-    #     findState = 0
-    #     q_factor = self.Q_Factor
-    #     for dictQFactor in q_factor:
-    #         # guardare bene l'if perchè tratta vettori di lunghezza diversa!!
-    #         if compareState(dictQFactor['state'],
-    #                         state):  # ho trovato lo stato
-    #             findState = 1
-    #             changeDisposition = dictQFactor['bestDecision']  # selezione l'azione migliore che conosco
-    #             for action in changeDisposition:
-    #                 col1 = action['col1']
-    #                 col2 = action['col2']
-    #
-    #                 self.actualDisposition._move(
-    #                     col1,
-    #                     col2
-    #                 )
-    #             break
-    #     if findState == 0:  # non ho trovato lo stato
-    #         changeDisposition = self.exploration()
-    #
-    #     return changeDisposition
-
     def explore_decision(self, state):
         choice = np.random.binomial(1, p=self.eps)
         if choice == 1:
@@ -445,7 +384,7 @@ class AgentNN2:
             for state_decision in dictQ['decisionsKnown']:
                 action = state_decision['decision']
                 self.valueFunction.append(state_decision['Q_factor'])
-                state_action = copy.copy(dictQ['state'])
+                state_action = copy.copy(dictQ['state'])  # copio lo stato
                 for move in action:
                     if state_action['freeSpace'][move['col2']] == 1:
                         action_list = np.zeros((2, self.n_cols))
@@ -462,11 +401,10 @@ class AgentNN2:
 
                 statePDTensor = self.toTorchTensor(state=state_action)
                 stateDatasetList.append(statePDTensor)
-                target.append(state_decision['Q_factor'])
 
         # Definiamo dataset
         training_data = StatePDDataset(X=stateDatasetList, y=target)
-        train_dataloader = DataLoader(training_data, batch_size=16, shuffle=True)
+        train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True)
         # Ora siamo pronti ad allenare la NN
         self.modelNN = self.modelNN.to(torch.float32)
         params = list(self.modelNN.parameters())
@@ -515,9 +453,10 @@ class AgentNN2:
         decision_list = []
         working = True
         while working:
-            findMin, oneMoveDecision = self.decisionGridSearch(grid)
+            findMin, oneMoveDecision, grid = self.decisionGridSearch(grid)
             if findMin:
-                if oneMoveDecision != []:
+                if oneMoveDecision != [] and grid.disposition[self.n_rows - 1, oneMoveDecision['col1']] != 0 \
+                        and grid.disposition[0, oneMoveDecision['col2']] == 0:
                     grid._move(
                         oneMoveDecision['col1'],
                         oneMoveDecision['col2']
@@ -526,6 +465,12 @@ class AgentNN2:
                 working = findMin and np.random.binomial(1, probStop)
             else:
                 working = False
+
+        for move in decision_list:  # aggiorno stato agente
+            self.actualDisposition._move(
+                col1=move['col1'],
+                col2=move['col2']
+            )
         return decision_list
 
     def decisionGridSearch(self, grid):
@@ -534,6 +479,7 @@ class AgentNN2:
         possible_col = []
         actionMin = np.zeros((2, self.n_cols))
         valueActualState = self.valueState(grid.disposition, actionMin)
+        valueActualState = valueActualState.item()
         for i in range(self.n_cols):
             possible_col.append(i)
         perm = permutations(possible_col, 2)
@@ -545,11 +491,14 @@ class AgentNN2:
         kBest = -1
         for k in range(l):
             action = np.zeros((2, self.n_cols))
+            noAction = True
             if grid.disposition[self.n_rows - 1, action_list[k, 0]] != 0:
                 action[0, action_list[k, 0]] = 1
                 action[1, action_list[k, 1]] = 1
+                noAction = False
             value = self.valueState(grid.disposition, action)
-            if value <= valueActualState - toll:
+            value = value.item()
+            if value <= valueActualState + toll and noAction is False:
                 actionMin = action
                 valueActualState = value
                 findMin = True
@@ -562,78 +511,9 @@ class AgentNN2:
                     'col1': best_decision[0],
                     'col2': best_decision[1]
                 }
-                self.actualDisposition._move(
-                    col1=best_decision[0],
-                    col2=best_decision[1]
-                )
-                return findMin, decisionDict
+                return findMin, decisionDict, grid
             else:
-                return findMin, []
+                return findMin, [], grid
 
         else:
-            return findMin, []
-
-    def agentDecisionRandom(self, grid, n_trials=3, n_moves=3):
-        # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
-        action_list = np.zeros((n_trials, 2 * n_moves), dtype='int')
-        decision_list = []
-        value_list = []
-        for k in range(0, n_trials):
-            i = 0
-            n_rep = 0
-            while i < 2 * n_moves:
-                col1 = np.random.randint(0, self.n_cols)
-                col2 = np.random.randint(0, self.n_cols)
-                if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
-                    action_list[k, i] = col1
-                    action_list[k, i + 1] = col2
-                    i += 2
-                elif n_rep > 10 and self.actualDisposition.disposition[0, col2] != 0:
-                    action_list[k, i] = col1
-                    action_list[k, i + 1] = col1
-                else:
-                    n_rep += 1
-        for k in range(n_trials):
-            i = 0
-            fake_grid = copy.deepcopy(grid)
-            while i < n_moves:
-                if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
-                    value = 100000
-                    value_list.append(value)
-                    i = n_moves  # per uscire dal while
-                else:
-                    fake_grid._move(action_list[k, i], action_list[k, i + 1])
-                    i += 2
-            statePostDecision = self.defineState(fake_grid)
-            statePDTensor = self.toTorchTensor(state=statePostDecision)
-            # value = self.modelNN(statePDTensor)
-            x = self.modelNN(statePDTensor)
-            value_list.append(x.item())
-        k = np.argmin(np.array(value_list))
-        # valutiamo valore stato attuale:
-        statePostDecision = self.defineState(self.actualDisposition)
-        statePDTensor = self.toTorchTensor(state=statePostDecision)
-        value = self.modelNN(statePDTensor)
-        valueNoAction = value.detach().numpy()
-        if valueNoAction >= value_list[k]:
-            best_decision = action_list[k, :]
-            j = 0
-            while j < 2 * self.n_moves:
-                if best_decision[j] != best_decision[j + 1]:
-                    decisionDict = {
-                        'type': 'M',
-                        'col1': best_decision[j],
-                        'col2': best_decision[j + 1]
-                    }
-                    self.actualDisposition._move(
-                        col1=best_decision[j],
-                        col2=best_decision[j + 1]
-                    )
-                    decision_list.append(decisionDict)
-
-                j += 2
-
-        else:
-            decision_list = []
-
-        return decision_list
+            return findMin, [], grid
