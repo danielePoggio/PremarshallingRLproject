@@ -4,7 +4,9 @@ from utils import marshallingWithoutAgent
 from utils import marshallingWithAgentNN2 as marshallingWithAgentNN
 from utils import plot_comparison, plot_2d_graph
 
+
 def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
+    experiment_results = {}
     if expColumns:
         alpha = 0.9
         n_rows = 3
@@ -35,6 +37,8 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
                         y_label='Costo magazzino', title='', label1='Costo con agente', label2='costo senza agente')
         plot_2d_graph(n_col_list, timeAgent, 'Numero colonne', 'Tempo esecuzione', '')
         plot_2d_graph(n_col_list, numTakenDecision, 'Numero colonne', 'Numero di decisioni prese', '')
+        experiment_results['col'] = {'noAgent': costNoAgent, 'Agent': costAgent, 'timeAgent': timeAgent,
+                                     'numDecision': numTakenDecision}
 
     """ VARIAZIONE NUMERO DI ITEMS """
     if expItems:
@@ -68,6 +72,8 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
                         y_label='Costo magazzino', title='', label1='Costo con agente', label2='costo senza agente')
         plot_2d_graph(n_parcel_types_list, timeAgent, 'Numero items differenti', 'Tempo esecuzione', '')
         plot_2d_graph(n_parcel_types_list, numTakenDecision, 'Numero items differenti', 'Numero di decisioni prese', '')
+        experiment_results['items'] = {'noAgent': costNoAgent, 'Agent': costAgent, 'timeAgent': timeAgent,
+                                       'numDecision': numTakenDecision}
 
     """ VARIAZIONE NUMERO DI ITERAZIONI """
     if expIterations:
@@ -101,6 +107,8 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
                         y_label='Costo magazzino', title='', label1='Costo con agente', label2='costo senza agente')
         plot_2d_graph(num_iteration_list, timeAgent, 'Numero iterazioni', 'Tempo esecuzione', '')
         plot_2d_graph(num_iteration_list, numTakenDecision, 'Numero iterazioni', 'Numero di decisioni prese', '')
+        experiment_results['iterations'] = {'noAgent': costNoAgent, 'Agent': costAgent, 'timeAgent': timeAgent,
+                                            'numDecision': numTakenDecision}
 
     if expLearningRateRL:
         n_rows = 3
@@ -112,7 +120,6 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
         costAgent = []
         timeAgent = []
         numTakenDecision = []
-        num_iteration_list = list(range(1, 10))
         learningRateRL_list = [0.1, 0.3, 0.4, 0.5, 0.6, 0.9, 1]
         for alpha in learningRateRL_list:
             env = Warehouse(
@@ -133,3 +140,7 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
                         y_label='Costo magazzino', title='', label1='Costo con agente', label2='costo senza agente')
         plot_2d_graph(learningRateRL_list, timeAgent, 'Learning Rate Agente', 'Tempo esecuzione', '')
         plot_2d_graph(learningRateRL_list, numTakenDecision, 'Learning Rate Agente', 'Numero di decisioni prese', '')
+        experiment_results['LearningRate'] = {'noAgent': costNoAgent, 'Agent': costAgent, 'timeAgent': timeAgent,
+                                              'numDecision': numTakenDecision}
+
+    return experiment_results

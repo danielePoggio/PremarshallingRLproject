@@ -128,11 +128,14 @@ def marshallingWithAgentNN(enviroment, agente, time_limit, iterations):
     obs = enviroment.reset()
     agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
     tot_cost = 0
+    no_empty_decisions = 0
     # Partiamo con le iterazioni
     for t in range(time_limit):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
         decision = agente.agentDecisionRandom(grid=agente.actualDisposition, n_trials=3, n_moves=3)  # prende decisione
+        if decision != []:
+            no_empty_decisions += 1
         obs['actual_warehouse'].disposition = copy.deepcopy(agente.actualDisposition.disposition)
         action = agente.get_action(obs=obs)  # risolve ordini
         print(action)
@@ -145,7 +148,7 @@ def marshallingWithAgentNN(enviroment, agente, time_limit, iterations):
     print(tot_cost)
     end_time = time.time()
     elapsed_time = end_time - start_time
-    return tot_cost, elapsed_time
+    return tot_cost, elapsed_time, no_empty_decisions
 
 def marshallingWithAgentNN2(enviroment, agente, time_limit, iterations):
     start_time = time.time()

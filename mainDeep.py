@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # env.plot()
     agent = AgentNN(env, alpha=0.6, gamma=0.9, n_item=n_parcel_types, time_limit=time_limit)
     agent.learnFrequency(num_episode=1)
-    agent.learn(iterations=1)
+    agent.learn(iterations=10)
     obs = env.reset()
     agent.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
     tot_cost = 0

@@ -424,20 +424,25 @@ class AgentNN:
                     n_rep += 1
         for k in range(n_trials):
             i = 0
+            flagNoMove = False
             fake_grid = copy.deepcopy(grid)
             while i < n_moves:
                 if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
-                    value = 100000
-                    value_list.append(value)
+                    flagNoMove = True
+                    # value = 100000
+                    # value_list.append(value)
                     i = n_moves  # per uscire dal while
                 else:
                     fake_grid._move(action_list[k, i], action_list[k, i + 1])
                     i += 2
-            statePostDecision = self.defineState(fake_grid)
-            statePDTensor = self.toTorchTensor(state=statePostDecision)
-            # value = self.modelNN(statePDTensor)
-            x = self.modelNN(statePDTensor)
-            value_list.append(x.item())
+            if flagNoMove == False:
+                statePostDecision = self.defineState(fake_grid)
+                statePDTensor = self.toTorchTensor(state=statePostDecision)
+                # value = self.modelNN(statePDTensor)
+                x = self.modelNN(statePDTensor)
+                value_list.append(x.item())
+            else:
+                value_list.append(100000)
         k = np.argmin(np.array(value_list))
         # valutiamo valore stato attuale:
         statePostDecision = self.defineState(self.actualDisposition)
