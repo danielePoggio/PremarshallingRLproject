@@ -438,7 +438,7 @@ class AgentNN:
             if flagNoMove == False:
                 statePostDecision = self.defineState(fake_grid)
                 statePDTensor = self.toTorchTensor(state=statePostDecision)
-                # value = self.modelNN(statePDTensor)
+                # value = self.model(statePDTensor)
                 x = self.modelNN(statePDTensor)
                 value_list.append(x.item())
             else:
@@ -475,7 +475,7 @@ class AgentNN:
     def valueState(self, state):
         statePostDecision = self.defineState(state)
         statePDTensor = self.toTorchTensor(state=statePostDecision)
-        # value = self.modelNN(statePDTensor)
+        # value = self.model(statePDTensor)
         x = torch.flatten(statePDTensor)
         x = F.sigmoid(self.modelNN.fc1(x))
         x = self.modelNN.fc3(x)

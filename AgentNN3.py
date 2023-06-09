@@ -442,7 +442,7 @@ class AgentNN:
                     i += 2
             statePostDecision = self.defineState(fake_grid)
             statePDTensor = self.toTorchTensor(state=statePostDecision)
-            # value = self.modelNN(statePDTensor)
+            # value = self.model(statePDTensor)
             x = torch.flatten(statePDTensor)
             x = F.sigmoid(self.modelNN.fc1(x))
             x = self.modelNN.fc3(x)
@@ -452,7 +452,7 @@ class AgentNN:
         # valutiamo valore stato attuale:
         statePostDecision = self.defineState(self.actualDisposition)
         statePDTensor = self.toTorchTensor(state=statePostDecision)
-        # value = self.modelNN(statePDTensor)
+        # value = self.model(statePDTensor)
         x = torch.flatten(statePDTensor)
         x = F.sigmoid(self.modelNN.fc1(x))
         valueNoAction = self.modelNN.fc3(x)
@@ -484,7 +484,7 @@ class AgentNN:
         state, _ = sort_columns_descending(state.disposition)
         statePostDecision = self.defineState(state)
         statePDTensor = self.toTorchTensor(state=statePostDecision)
-        # value = self.modelNN(statePDTensor)
+        # value = self.model(statePDTensor)
         x = torch.flatten(statePDTensor)
         x = F.sigmoid(self.modelNN.fc1(x))
         x = self.modelNN.fc3(x)

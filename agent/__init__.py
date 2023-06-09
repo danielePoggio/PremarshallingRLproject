@@ -4,6 +4,7 @@ from .DeepAgent import DeepAgent
 from .AgentNN2 import AgentNN2
 from .AgentNN import AgentNN
 from .agentNoLearn import Agent
+from .AgentEasy import AgentEasy
 
 
 __all__ = [

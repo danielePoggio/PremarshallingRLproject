@@ -34,9 +34,9 @@ def compareDisposition(a, b):
 
 
 def compareState(state1, state2):
-    elem_last_cols1 = state1['elem_last_cols']
+    elem_last_cols1 = state1['needChange']
     freeSpace1 = state1['freeSpace']
-    elem_last_cols2 = state2['elem_last_cols']
+    elem_last_cols2 = state2['needChange']
     freeSpace2 = state2['freeSpace']
     flag = compare_np_arr(state1=elem_last_cols1, state2=elem_last_cols2) and compare_np_arr(state1=freeSpace1,
                                                                                              state2=freeSpace2)
@@ -141,37 +141,63 @@ class AgentPostDecision:
 
         self.parcelFreq = self.parcelObs / self.tot_parcel
 
+    # def defineState(self, disposition):
+    #     freeSpace = np.zeros(self.n_cols)
+    #     numObjCol = np.zeros(self.n_cols)
+    #     # Osservo la prima riga e la seconda riga di ciascuna colonna
+    #     two_elem_col = np.zeros((2, self.n_cols))
+    #     for j in range(0, self.n_cols):
+    #         objCol = 0
+    #         if disposition[0, j] == 0:
+    #             freeSpace[j] = 1
+    #         for i in range(self.n_rows):
+    #             if disposition[i, j] != 0:
+    #                 objCol += 1
+    #         numObjCol[j] = objCol
+    #         done = False
+    #         i = 0
+    #         item_found = 0
+    #         while not done:
+    #             if disposition[i, j] != 0:
+    #                 two_elem_col[item_found, j] = self.parcelFreq[disposition[i, j] - 1]
+    #                 item_found += 1
+    #             i += 1
+    #             if item_found == 2 or i == self.n_rows:
+    #                 done = True
+    #     for j in range(self.n_cols):  # check
+    #         if two_elem_col[1, j] == 0:
+    #             two_elem_col[1, j] = two_elem_col[0, j]
+    #             two_elem_col[0, j] = 0
+    #
+    #     stateDict = {
+    #         'freeSpace': numObjCol,
+    #         'elem_last_cols': two_elem_col
+    #     }
+    #     return stateDict
+
     def defineState(self, disposition):
+        needChange = np.zeros(self.n_cols)
         freeSpace = np.zeros(self.n_cols)
-        numObjCol = np.zeros(self.n_cols)
         # Osservo la prima riga e la seconda riga di ciascuna colonna
-        two_elem_col = np.zeros((2, self.n_cols))
         for j in range(0, self.n_cols):
-            objCol = 0
             if disposition[0, j] == 0:
                 freeSpace[j] = 1
-            for i in range(self.n_rows):
-                if disposition[i, j] != 0:
-                    objCol += 1
-            numObjCol[j] = objCol
             done = False
             i = 0
-            item_found = 0
             while not done:
-                if disposition[i, j] != 0:
-                    two_elem_col[item_found, j] = self.parcelFreq[disposition[i, j] - 1]
-                    item_found += 1
-                i += 1
-                if item_found == 2 or i == self.n_rows:
+                if i + 2 >= self.n_rows:
                     done = True
-        for j in range(self.n_cols):  # check
-            if two_elem_col[1, j] == 0:
-                two_elem_col[1, j] = two_elem_col[0, j]
-                two_elem_col[0, j] = 0
-
+                else:
+                    if disposition[i, j] == 0 and disposition[i + 1, j] != 0 and disposition[i + 2, j] != 0:
+                        if self.parcelFreq[disposition[i + 1, j] - 1] > self.parcelFreq[disposition[i + 2, j] - 1]:
+                            needChange[j] = 1
+                        done = True
+                        i += 1
+                    else:
+                        i += 1
         stateDict = {
-            'freeSpace': numObjCol,
-            'elem_last_cols': two_elem_col
+            'freeSpace': freeSpace,
+            'needChange': needChange
         }
         return stateDict
 
@@ -282,9 +308,9 @@ class AgentPostDecision:
 
     def stateRegression(self, state):
         # return np.reshape(state, 2*self.n_cols).tolist()
-        return state['freeSpace'].tolist() + np.reshape(state['elem_last_cols'], 2 * self.n_cols).tolist()
+        return state['freeSpace'].tolist() + np.reshape(state['needChange'], 2 * self.n_cols).tolist()
 
-    def learn(self, iterations=10):
+    def RunSimulation(self, iterations=10):
         for _ in tqdm(range(iterations)):
             obs = self.env.reset()  # faccio resettare da capo l'ambiente
             for t in range(self.time_limit):
@@ -302,63 +328,89 @@ class AgentPostDecision:
                 next_state = self.defineState(obs['actual_warehouse'].disposition)
                 self.updateQValuePD(old=state, decision=decision, reward=reward, new=next_state)
 
-        # IDEA CHIAVE: Q(s,a) = V(s^a) cioè il post-decision state!
+        print("Simulation has finished!")
+
+    def learn(self, iterations=10):
+        self.RunSimulation(iterations)
+        # # IDEA CHIAVE: Q(s,a) = V(s^a) cioè il post-decision state!
+        # for dictQ in self.Q_Factor:
+        #     for state_decision in dictQ['decisionsKnown']:
+        #         action = state_decision['decision']
+        #         self.valueFunction.append(state_decision['Q_factor'])
+        #         statePostDecision = copy.copy(dictQ['state']['elem_last_cols'])
+        #         for move in action:
+        #             col1 = move['col1']
+        #             col2 = move['col2']
+        #             if dictQ['state']['freeSpace'][col2] < self.n_rows:  # posso fare spostamento
+        #                 if statePostDecision[0, col1] != 0:  # esiste oggetto da spostare
+        #                     temp = statePostDecision[0, col1]
+        #                     statePostDecision[0, col1] = 0
+        #                     if statePostDecision[0, col2] != 0:
+        #                         statePostDecision[1, col2] = statePostDecision[0, col2]
+        #                         statePostDecision[0, col2] = temp
+        #                         dictQ['state']['freeSpace'][col1] -= 1
+        #                         dictQ['state']['freeSpace'][col2] += 1
+        #                     elif statePostDecision[0, col2] == 0 and statePostDecision[1, col2] != 0:
+        #                         statePostDecision[0, col2] = temp
+        #                         dictQ['state']['freeSpace'][col1] -= 1
+        #                         dictQ['state']['freeSpace'][col2] += 1
+        #                     else:
+        #                         statePostDecision[1, col2] = temp
+        #                         dictQ['state']['freeSpace'][col1] -= 1
+        #                         dictQ['state']['freeSpace'][col2] += 1
+        #                 elif statePostDecision[0, col1] == 0 and statePostDecision[1, col1] != 0:
+        #                     temp = statePostDecision[1, col1]
+        #                     statePostDecision[1, col1] = 0
+        #                     if statePostDecision[0, col2] != 0:
+        #                         statePostDecision[1, col2] = statePostDecision[0, col2]
+        #                         statePostDecision[0, col2] = temp
+        #                         dictQ['state']['freeSpace'][col1] -= 1
+        #                         dictQ['state']['freeSpace'][col2] += 1
+        #                     elif statePostDecision[0, col2] == 0 and statePostDecision[1, col2] != 0:
+        #                         statePostDecision[0, col2] = temp
+        #                         dictQ['state']['freeSpace'][col1] -= 1
+        #                         dictQ['state']['freeSpace'][col2] += 1
+        #                     else:
+        #                         statePostDecision[1, col2] = temp
+        #                         dictQ['state']['freeSpace'][col1] -= 1
+        #                         dictQ['state']['freeSpace'][col2] += 1
+        #                 elif statePostDecision[0, col1] == 0 and statePostDecision[1, col1] == 0:
+        #                     print('Non si può fare nulla!')
+        #
+        #             else:
+        #                 print('Non si può fare nulla (pt. 2)')
+        #
+        #         stateForReg = {
+        #             'freeSpace': dictQ['state']['freeSpace'],
+        #             'elem_last_cols': statePostDecision
+        #         }
+        #         self.stateList.append(self.stateRegression(stateForReg))
+        stateDatasetList = []
+        target = []
         for dictQ in self.Q_Factor:
             for state_decision in dictQ['decisionsKnown']:
                 action = state_decision['decision']
                 self.valueFunction.append(state_decision['Q_factor'])
-                statePostDecision = copy.copy(dictQ['state']['elem_last_cols'])
+                state_action = copy.copy(dictQ['state'])  # copio lo stato
                 for move in action:
-                    col1 = move['col1']
-                    col2 = move['col2']
-                    if dictQ['state']['freeSpace'][col2] < self.n_rows:  # posso fare spostamento
-                        if statePostDecision[0, col1] != 0:  # esiste oggetto da spostare
-                            temp = statePostDecision[0, col1]
-                            statePostDecision[0, col1] = 0
-                            if statePostDecision[0, col2] != 0:
-                                statePostDecision[1, col2] = statePostDecision[0, col2]
-                                statePostDecision[0, col2] = temp
-                                dictQ['state']['freeSpace'][col1] -= 1
-                                dictQ['state']['freeSpace'][col2] += 1
-                            elif statePostDecision[0, col2] == 0 and statePostDecision[1, col2] != 0:
-                                statePostDecision[0, col2] = temp
-                                dictQ['state']['freeSpace'][col1] -= 1
-                                dictQ['state']['freeSpace'][col2] += 1
-                            else:
-                                statePostDecision[1, col2] = temp
-                                dictQ['state']['freeSpace'][col1] -= 1
-                                dictQ['state']['freeSpace'][col2] += 1
-                        elif statePostDecision[0, col1] == 0 and statePostDecision[1, col1] != 0:
-                            temp = statePostDecision[1, col1]
-                            statePostDecision[1, col1] = 0
-                            if statePostDecision[0, col2] != 0:
-                                statePostDecision[1, col2] = statePostDecision[0, col2]
-                                statePostDecision[0, col2] = temp
-                                dictQ['state']['freeSpace'][col1] -= 1
-                                dictQ['state']['freeSpace'][col2] += 1
-                            elif statePostDecision[0, col2] == 0 and statePostDecision[1, col2] != 0:
-                                statePostDecision[0, col2] = temp
-                                dictQ['state']['freeSpace'][col1] -= 1
-                                dictQ['state']['freeSpace'][col2] += 1
-                            else:
-                                statePostDecision[1, col2] = temp
-                                dictQ['state']['freeSpace'][col1] -= 1
-                                dictQ['state']['freeSpace'][col2] += 1
-                        elif statePostDecision[0, col1] == 0 and statePostDecision[1, col1] == 0:
-                            print('Non si può fare nulla!')
-
+                    if state_action['freeSpace'][move['col2']] == 1: # Se colonna 2 ha almeno un posto libero
+                        action_list = np.zeros((2, self.n_cols))
+                        action_list[0, move['col1']] = 1
+                        action_list[1, move['col2']] = 1
+                        state_action['action'] = action_list
+                        target.append(float(state_decision['Q_factor']))
                     else:
-                        print('Non si può fare nulla (pt. 2)')
+                        action_list = np.zeros((2, self.n_cols))
+                        action_list[0, move['col1']] = 1
+                        action_list[1, move['col2']] = 1
+                        state_action['action'] = action_list
+                        target.append(float(10000))
 
-                stateForReg = {
-                    'freeSpace': dictQ['state']['freeSpace'],
-                    'elem_last_cols': statePostDecision
-                }
-                self.stateList.append(self.stateRegression(stateForReg))
+                state_action = self.stateRegression(state_action)
+                stateDatasetList.append(state_action)
 
-        X = np.array(self.stateList)
-        y = np.array(self.valueFunction)
-
+        X = np.array(stateDatasetList)
+        y = np.array(target)
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
         lin_model = linear_model.LinearRegression()
         modelNN = MLPRegressor()

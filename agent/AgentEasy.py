@@ -1,66 +1,38 @@
 import numpy as np
 from tqdm import tqdm
 import copy
-import torch
-from torch import nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
+from sklearn import linear_model
+from sklearn.neural_network import MLPRegressor
+from sklearn.model_selection import train_test_split
 from itertools import permutations
-from utils import *
+from utils import train_loop, compare_np_arr
 
 
-class Net(nn.Module):
-
-    def __init__(self, n_rows, n_cols, n_parcel_items):
-        super(Net, self).__init__()
-        # n_parcel_items input channels, n_parcel_items output channels, 3x3 square convolution kernel
-        self.conv = nn.Conv2d(n_parcel_items, n_parcel_items, kernel_size=3, padding=1)
-        # n_parcel_items*n_rows*n_cols input channels, n_rows*n_cols output channels
-        self.fc1 = nn.Linear(n_parcel_items * n_rows * n_cols, n_rows * n_cols)
-        # n_rows*n_cols input channels, 1 output channel
-        self.fc3 = nn.Linear(n_rows * n_cols, 1)
-
-    def forward(self, x):
-        x = torch.flatten(x, start_dim=1)
-        x = F.sigmoid(self.fc1(x))
-        x = self.fc3(x)
-        return x
+def compareDisposition(a, b):
+    compare = (a == b)
+    flag = True
+    n_rows, n_cols = compare.shape
+    for i in range(n_rows):
+        for j in range(n_cols):
+            if not compare[i, j]:
+                flag = False
+                break
+    return flag
 
 
-class StatePDDataset(Dataset):
-    def __init__(self, X, y, transform=None, target_transform=None):
-        self.data = X
-        self.target = y
-        self.transform = transform
-        self.target_transform = target_transform
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        return self.data[idx], self.target[idx]
+def compareState(state1, state2):
+    elem_last_cols1 = state1['needChange']
+    freeSpace1 = state1['freeSpace']
+    elem_last_cols2 = state2['needChange']
+    freeSpace2 = state2['freeSpace']
+    flag = compare_np_arr(state1=elem_last_cols1, state2=elem_last_cols2) and compare_np_arr(state1=freeSpace1,
+                                                                                             state2=freeSpace2)
+    return flag
 
 
-def train_loop(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
-    for batch, (X, y) in enumerate(dataloader):
-        y = y.float()
-        # Compute prediction and loss
-        pred = model(X).float()
-        loss = loss_fn(pred.squeeze(), y)
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        if batch % 100 == 0:
-            loss, current = loss.item(), (batch + 1) * len(X)
-            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-
-
-class AgentNN:
-    def __init__(self, warehouse, alpha, gamma, n_item, time_limit, n_moves=2, eps=0.1):
+class AgentEasy:
+    def __init__(self, warehouse, alpha, gamma, n_item, time_limit, n_moves=1, eps=0.1, model = 'MLP'):
+        self.actualState = None
         self.stateList = []
         self.valueFunction = []
         self.actualDisposition = None
@@ -70,12 +42,16 @@ class AgentNN:
         self.n_cols = warehouse.n_cols
         self.n_rows = warehouse.n_rows
         self.n_item = n_item
-        self.n_moves = 1
+        self.n_moves = n_moves
         self.n_time = 0
         self.env = copy.deepcopy(warehouse)
+        self.actualDecision = None
         self.learningCoeff = alpha
         self.discountCoeff = gamma
-        self.modelNN = Net(n_rows=self.n_rows, n_cols=self.n_cols, n_parcel_items=self.n_item)
+        if model == 'linear':
+            self.model = linear_model.LinearRegression()
+        else:
+            self.model = MLPRegressor()
         self.parcelObs = np.zeros(n_item)
         self.parcelFreq = np.zeros(n_item)
         self.tot_parcel = 0
@@ -153,21 +129,45 @@ class AgentNN:
 
         self.parcelFreq = self.parcelObs / self.tot_parcel
 
-    def defineState(self, state_disposition):
-        sorted_matrix, current_positions = sort_columns_descending(state_disposition.disposition)
-        return sorted_matrix, current_positions
+    def defineState(self, disposition):
+        needChange = np.zeros(self.n_cols)
+        freeSpace = np.zeros(self.n_cols)
+        # Osservo la prima riga e la seconda riga di ciascuna colonna
+        for j in range(0, self.n_cols):
+            if disposition[0, j] == 0:
+                freeSpace[j] = 1
+            done = False
+            i = 0
+            while not done:
+                if i + 2 >= self.n_rows:
+                    done = True
+                else:
+                    if disposition[i, j] == 0 and disposition[i + 1, j] != 0 and disposition[i + 2, j] != 0:
+                        if self.parcelFreq[disposition[i + 1, j] - 1] > self.parcelFreq[disposition[i + 2, j] - 1]:
+                            needChange[j] = 1
+                        done = True
+                        i += 1
+                    else:
+                        i += 1
+        stateDict = {
+            'freeSpace': freeSpace,
+            'needChange': needChange
+        }
+        return stateDict
 
-    def explore_decision(self):
+    def explore_decision(self, state):
         choice = np.random.binomial(1, p=self.eps)
         if choice == 1:
-            decision = self.exploration()
+            decision = self.exploration(state)
         else:
-            decision = self.exploitation()
+            decision = self.exploitation(state)
         self.actualDecision = decision
         return decision
 
-    def exploration(self):
+    def exploration(self, state):
+        state = copy.deepcopy(state)
         decision = []
+        n_col = self.n_cols
         number_mov = 1
         n_rep = 0
         n_action = 0
@@ -175,9 +175,9 @@ class AgentNN:
             n_rep += 1
             if n_rep > 1000:
                 print("HELP")
-            col1 = np.random.randint(0, self.n_cols)
-            col2 = np.random.randint(0, self.n_cols)
-            if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
+            col1 = np.random.randint(0, n_col)
+            col2 = np.random.randint(0, n_col)
+            if state['freeSpace'][col2] == 1 and col1 != col2:
                 # eseguo azione se le colonne non sono identiche e se la colonna 2 non è piena e se la colonna 1 non
                 # è vuota
                 decision.append(
@@ -193,36 +193,28 @@ class AgentNN:
                     break
         return decision
 
-    def exploitation(self):
-        decision = []
-        state = self.defineState(self.actualDisposition)
+    def exploitation(self, state):
         # allora devo valutare il minimo tra i Q-Factor
         findState = 0
         q_factor = self.Q_Factor
         for dictQFactor in q_factor:
             # guardare bene l'if perchè tratta vettori di lunghezza diversa!!
             if compareState(dictQFactor['state'],
-                            self.actualDisposition):  # ho trovato lo stato
+                            state):  # ho trovato lo stato
                 findState = 1
                 changeDisposition = dictQFactor['bestDecision']  # selezione l'azione migliore che conosco
                 for action in changeDisposition:
-                    if self.actualDisposition.disposition[0, action['col2']] == 0:
-                        col1 = action['col1']
-                        col2 = action['col2']
+                    col1 = action['col1']
+                    col2 = action['col2']
 
-                        self.actualDisposition._move(
-                            col1,
-                            col2
-                        )
-                        decision.append(action)
-                    else:
-                        break
-
-                break
+                    self.actualDisposition._move(
+                        col1,
+                        col2
+                    )
         if findState == 0:  # non ho trovato lo stato
-            decision = self.exploration()
+            changeDisposition = self.exploration(state)
 
-        return decision
+        return changeDisposition
 
     def updateQValuePD(self, old, decision, reward, new):  # aggiorno Q_Factor
         q_factor = self.Q_Factor
@@ -329,18 +321,14 @@ class AgentNN:
                 self.Q_Factor[indexOldState]['bestQ'] = Q_old
         pass
 
-    def toTorchTensor(self, state):
-        state_d = state.disposition
-        # Definisco stato nella forma che voglio
-        state_np = np.zeros(shape=(self.n_item, self.n_rows, self.n_cols))
-        for item in range(self.n_item):
-            for i in range(0, self.n_rows):
-                for j in range(0, self.n_cols):
-                    if state_d[i, j] == (item + 1):
-                        state_np[item, i, j] = 1
-        # lo trasformo in tensore
-        # state_t = torch.from_numpy(state_np)
-        return torch.from_numpy(state_np).to(torch.float32)
+    def forRegression(self, state):
+        # state_np = np.zeros(4 * self.n_cols)
+        # state_np[0:self.n_cols] = state['freeSpace']
+        # state_np[self.n_cols:2 * self.n_cols] = state['needChange']
+        # state_np[2 * self.n_cols:3 * self.n_cols] = state['action'][0, :]
+        # state_np[3 * self.n_cols:4 * self.n_cols] = state['action'][1, :]
+        return state['freeSpace'].tolist() + state['needChange'].tolist() + state['action'][0, :].tolist() + \
+            state['action'][1, :].tolist()
 
     def learn(self, iterations=10, learning_rate=0.1):
         self.RunSimulation(iterations=iterations)
@@ -350,150 +338,77 @@ class AgentNN:
             for state_decision in dictQ['decisionsKnown']:
                 action = state_decision['decision']
                 self.valueFunction.append(state_decision['Q_factor'])
-                statePostDecision = copy.copy(dictQ['state'])
+                state_action = copy.copy(dictQ['state'])  # copio lo stato
                 for move in action:
-                    if statePostDecision[0, move['col2']] == 0:
-                        if findNonZeroElem(statePostDecision, move['col1']) != -1:
-                            statePostDecision[findNonZeroElem(statePostDecision, move['col2'])+1, move['col2']] = \
-                                statePostDecision[findNonZeroElem(statePostDecision, move['col1'])+1, move['col1']]
-                            statePostDecision[findNonZeroElem(statePostDecision, move['col1']) + 1, move['col1']] = 1
+                    if state_action['freeSpace'][move['col2']] == 1:
+                        action_list = np.zeros((2, self.n_cols))
+                        action_list[0, move['col1']] = 1
+                        action_list[1, move['col2']] = 1
+                        state_action['action'] = action_list
                         target.append(float(state_decision['Q_factor']))
                     else:
+                        action_list = np.zeros((2, self.n_cols))
+                        action_list[move['col1']] = 1
+                        action_list[move['col2']] = 1
+                        state_action['action'] = action_list
                         target.append(float(10000))
 
-                statePDTensor = self.toTorchTensor(state=statePostDecision)
+                statePDTensor = self.forRegression(state=state_action)
                 stateDatasetList.append(statePDTensor)
-                target.append(state_decision['Q_factor'])
 
-        # Definiamo dataset
-        training_data = StatePDDataset(X=stateDatasetList, y=target)
-        train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True)
         # Ora siamo pronti ad allenare la NN
-        self.modelNN = self.modelNN.to(torch.float32)
-        params = list(self.modelNN.parameters())
-        sizeFirstLayer = len(params)
-        print(params[0].size())
-        loss_fn = nn.MSELoss()
-        optimizer = torch.optim.SGD(self.modelNN.parameters(), lr=learning_rate)
-        epochs = 1
-        for t in range(epochs):
-            print(f"Epoch {t + 1}\n-------------------------------")
-            train_loop(train_dataloader, self.modelNN, loss_fn, optimizer)
-        print("Done!")
-        pass
+        X = np.array(stateDatasetList)
+        y = np.array(target)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
+        self.model.fit(X_train, y_train)
+        print('R^2 of NN:', self.model.score(X_test, y_test))
 
     def RunSimulation(self, iterations=10):
         for _ in tqdm(range(iterations)):
-            obs = self.env.reset()
-            self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-            state, cp = self.defineState(self.actualDisposition)
-            decision = self.explore_decision()
-            obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
+            obs = self.env.reset()  # faccio resettare da capo l'ambiente
             for t in range(self.time_limit):
-                action = self.get_action(obs=obs)
-                obs, reward, info = self.env.step(decision + action)
-                self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
-                next_state, cp = self.defineState(self.actualDisposition)
-                decision = self.explore_decision()
+                self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])  # Agente vedo stato
+                state = self.defineState(self.actualDisposition.disposition)  # Agente estrapola info che gli servono
+                decision = self.explore_decision(state)
                 obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
+                actOrder = self.get_action(obs)  # g2 nella pipeline
+                action = decision + actOrder
+                obs, reward, info = self.env.step(action)
+                whatsee = compareDisposition(self.actualDisposition.disposition, obs['actual_warehouse'].disposition)
+                if not whatsee:
+                    print('Alert!')
+                    print(self.actualDisposition.disposition == obs['actual_warehouse'].disposition)
+                next_state = self.defineState(obs['actual_warehouse'].disposition)
                 self.updateQValuePD(old=state, decision=decision, reward=reward, new=next_state)
-                state = copy.deepcopy(next_state)
 
         print("Simulation has finished!")
 
-    def agentDecisionRandom(self, grid, n_trials=3):
-        # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
-        action_list = np.zeros((n_trials, 2 * self.n_moves), dtype='int')
-        decision_list = []
-        value_list = []
-        for k in range(0, n_trials):
-            i = 0
-            n_rep = 0
-            num_moves = np.random.randint(low=0, high=3)
-            while i < num_moves:
-                col1 = np.random.randint(0, self.n_cols)
-                col2 = np.random.randint(0, self.n_cols)
-                if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
-                    action_list[k, i] = col1
-                    action_list[k, i + 1] = col2
-                    i += 2
-                elif n_rep > 10 and self.actualDisposition.disposition[0, col2] != 0:
-                    action_list[k, i] = col1
-                    action_list[k, i + 1] = col1
-                else:
-                    n_rep += 1
-        for k in range(n_trials):
-            i = 0
-            fake_grid = copy.deepcopy(grid)
-            while i < self.n_moves:
-                if self.actualDisposition.disposition[0, action_list[k, i + 1]] != 0:
-                    value = 100000
-                    value_list.append(value)
-                    i = self.n_moves  # per uscire dal while
-                else:
-                    fake_grid._move(action_list[k, i], action_list[k, i + 1])
-                    i += 2
-            statePostDecision = self.defineState(fake_grid)
-            statePDTensor = self.toTorchTensor(state=statePostDecision)
-            # value = self.model(statePDTensor)
-            x = torch.flatten(statePDTensor)
-            x = F.sigmoid(self.modelNN.fc1(x))
-            x = self.modelNN.fc3(x)
-
-            value_list.append(x.detach().numpy())
-        k = np.argmin(np.array(value_list))
-        # valutiamo valore stato attuale:
-        statePostDecision = self.defineState(self.actualDisposition)
-        statePDTensor = self.toTorchTensor(state=statePostDecision)
-        # value = self.model(statePDTensor)
-        x = torch.flatten(statePDTensor)
-        x = F.sigmoid(self.modelNN.fc1(x))
-        valueNoAction = self.modelNN.fc3(x)
-        valueNoAction = valueNoAction.detach().numpy()
-        if valueNoAction >= value_list[k]:
-            best_decision = action_list[k, :]
-            j = 0
-            while j < 2 * self.n_moves:
-                if best_decision[j] != best_decision[j + 1]:
-                    decisionDict = {
-                        'type': 'M',
-                        'col1': best_decision[j],
-                        'col2': best_decision[j + 1]
-                    }
-                    self.actualDisposition._move(
-                        col1=best_decision[j],
-                        col2=best_decision[j + 1]
-                    )
-                    decision_list.append(decisionDict)
-
-                j += 2
-
-        else:
-            decision_list = []
-
-        return decision_list
-
-    def valueState(self, state):
-        statePostDecision = self.defineState(state)
-        statePDTensor = self.toTorchTensor(state=statePostDecision)
-        # value = self.model(statePDTensor)
-        x = torch.flatten(statePDTensor)
-        x = F.sigmoid(self.modelNN.fc1(x))
-        x = self.modelNN.fc3(x)
-        x = x.detach().numpy()
-        return x
+    def valueState(self, state, action):
+        state_action = self.defineState(state)
+        state_action['action'] = action
+        statePDTensor = self.forRegression(state=state_action)
+        statePDTensor = np.array(statePDTensor).reshape(1, -1)
+        value = self.model.predict(statePDTensor)
+        return value
 
     def agentDecision(self, grid, probStop=0.1):
         decision_list = []
         working = True
         while working:
-            findMin, oneMoveDecision = self.decisionGridSearch(grid)
+            findMin, oneMoveDecision, grid = self.decisionGridSearch(grid)
             if findMin:
-                decision_list.append(oneMoveDecision)
+                if oneMoveDecision != [] and grid.disposition[self.n_rows - 1, oneMoveDecision['col1']] != 0 \
+                        and grid.disposition[0, oneMoveDecision['col2']] == 0:
+                    grid._move(
+                        oneMoveDecision['col1'],
+                        oneMoveDecision['col2']
+                    )
+                    decision_list.append(oneMoveDecision)
                 working = findMin and np.random.binomial(1, probStop)
             else:
                 working = False
-        for move in decision_list:  # aggiorno disposizione che vede agente
+
+        for move in decision_list:  # aggiorno stato agente
             self.actualDisposition._move(
                 col1=move['col1'],
                 col2=move['col2']
@@ -501,10 +416,12 @@ class AgentNN:
         return decision_list
 
     def decisionGridSearch(self, grid):
+        toll = 1.0e-02
         findMin = False
         possible_col = []
-        valueActualState = self.valueState(grid)
-        actionMin = np.zeros(3)
+        actionMin = np.zeros((2, self.n_cols))
+        valueActualState = self.valueState(grid.disposition, actionMin)
+        valueActualState = valueActualState.item()
         for i in range(self.n_cols):
             possible_col.append(i)
         perm = permutations(possible_col, 2)
@@ -513,26 +430,32 @@ class AgentNN:
             action_list.append([i, j])
         l = len(action_list)
         action_list = np.array(action_list)
+        kBest = -1
         for k in range(l):
-            if self.actualDisposition.disposition[0, action_list[k, 1]] == 0:
-                fake_grid = copy.deepcopy(grid)
-                fake_grid._move(action_list[k, 0], action_list[k, 1])
-                value = self.valueState(fake_grid)
-                if value < valueActualState:
-                    findMin = True
-                    actionMin = action_list[k, :]
-                    valueActualState = value
+            action = np.zeros((2, self.n_cols))
+            noAction = True
+            if grid.disposition[self.n_rows - 1, action_list[k, 0]] != 0:
+                action[0, action_list[k, 0]] = 1
+                action[1, action_list[k, 1]] = 1
+                noAction = False
+            value = self.valueState(grid.disposition, action)
+            value = value.item()
+            if value <= valueActualState + toll and noAction is False:
+                actionMin = action
+                valueActualState = value
+                findMin = True
+                kBest = k
         if findMin:
-            best_decision = actionMin
-            decisionDict = {
-                'type': 'M',
-                'col1': best_decision[0],
-                'col2': best_decision[1]
-            }
-            self.actualDisposition._move(
-                col1=best_decision[0],
-                col2=best_decision[1]
-            )
-            return findMin, decisionDict
+            best_decision = action_list[kBest, :]
+            if grid.disposition[self.n_rows - 1, best_decision[0]] != 0:
+                decisionDict = {
+                    'type': 'M',
+                    'col1': best_decision[0],
+                    'col2': best_decision[1]
+                }
+                return findMin, decisionDict, grid
+            else:
+                return findMin, [], grid
+
         else:
-            return findMin, []
+            return findMin, [], grid

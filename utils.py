@@ -185,6 +185,34 @@ def marshallingWithAgentNN2(enviroment, agente, time_limit, iterations):
     elapsed_time = end_time - start_time
     return tot_cost, elapsed_time, no_empty_decisions
 
+def marshallingWithAgentPD(enviroment, agente, time_limit, iterations):
+    start_time = time.time()
+    agente.learnFrequency(num_episode=1)
+    # Eseguiamo apprendimento dell'agente
+    agente.learn(iterations=iterations)
+    # Resettiamo ambiente
+    obs = enviroment.reset()
+    agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+    tot_cost = 0
+    no_empty_decisions = 0
+    # Partiamo con le iterazioni
+    for t in range(time_limit):
+        # Agente prende decisione in base allo stato che osserva
+        decision = agente.agentDecision(grid=copy.deepcopy(agente.actualDisposition))  # prende decisione
+        if decision != []:
+            no_empty_decisions += 1
+        # Aggiorno obs per farlo funzionare in get_action
+        obs['actual_warehouse'] = copy.deepcopy(agente.actualDisposition)
+        action = agente.get_action(obs=obs)  # risolve ordini
+        obs, cost, info = enviroment.step(decision + action)
+        # Agente osserva nuova disposizione per prendere decisione futura
+        agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
+        tot_cost += cost
+    print(tot_cost)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    return tot_cost, elapsed_time, no_empty_decisions
+
 def plot_2d_graph(x_data, y_data, x_label, y_label, title):
     # Creazione del grafico
     plt.plot(x_data, y_data)

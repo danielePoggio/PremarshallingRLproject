@@ -443,7 +443,7 @@ class AgentNN2:
         state_action = self.defineState(state)
         state_action['action'] = action
         statePDTensor = self.toTorchTensor(state=state_action)
-        # value = self.modelNN(statePDTensor)
+        # value = self.model(statePDTensor)
         x = torch.flatten(statePDTensor)
         x = F.sigmoid(self.modelNN.fc1(x))
         x = x.detach().numpy()
