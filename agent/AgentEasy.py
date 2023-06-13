@@ -361,7 +361,7 @@ class AgentEasy:
         y = np.array(target)
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
         self.model.fit(X_train, y_train)
-        print('R^2 of NN:', self.model.score(X_test, y_test))
+        print('R^2:', self.model.score(X_test, y_test))
 
     def RunSimulation(self, iterations=10):
         for _ in tqdm(range(iterations)):

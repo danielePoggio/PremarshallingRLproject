@@ -168,6 +168,7 @@ class AgentNN:
         return decision
 
     def exploration(self):
+        #  Supponiamo di fare un solo movimento
         decision = []
         number_mov = 1
         n_rep = 0
@@ -205,7 +206,8 @@ class AgentNN:
             if compareState(dictQFactor['state'],
                             self.actualDisposition):  # ho trovato lo stato
                 findState = 1
-                changeDisposition = dictQFactor['bestDecision']  # selezione l'azione migliore che conosco
+                changeDisposition = dictQFactor[
+                    'bestDecision']  # selezione l'azione migliore che conosco in quello stato
                 for action in changeDisposition:
                     if self.actualDisposition.disposition[0, action['col2']] == 0:
                         col1 = action['col1']
@@ -339,12 +341,11 @@ class AgentNN:
                 for j in range(0, self.n_cols):
                     if state_d[i, j] == (item + 1):
                         state_np[item, i, j] = 1
-        # lo trasformo in tensore
-        # state_t = torch.from_numpy(state_np)
         return torch.from_numpy(state_np).to(torch.float32)
 
     def learn(self, iterations=10, learning_rate=0.1):
         self.RunSimulation(iterations=iterations)
+        # Q(s,a) = V(s^a) Q-value di (s,a) è uguale al valore dello stato post-decisione V(s^a)
         stateDatasetList = []
         target = []
         for dictQ in self.Q_Factor:
@@ -352,28 +353,28 @@ class AgentNN:
                 action = state_decision['decision']
                 self.valueFunction.append(state_decision['Q_factor'])
                 statePostDecision = copy.copy(dictQ['state'])
+                flagMove = True
                 for move in action:
                     if statePostDecision.disposition[0, move['col2']] == 0:
                         statePostDecision._move(
                             move['col1'],
                             move['col2']
                         )
-                        target.append(float(state_decision['Q_factor']))
                     else:
-                        target.append(float(10000))
+                        flagMove = False
 
-                statePDTensor = self.toTorchTensor(state=statePostDecision)
+                statePDTensor = self.toTorchTensor(state=statePostDecision)  # OneHotEncoding
                 stateDatasetList.append(statePDTensor)
-                target.append(state_decision['Q_factor'])
+                if not flagMove:
+                    target.append(float(10000))
+                else:
+                    target.append(state_decision['Q_factor'])
 
         # Definiamo dataset
         training_data = StatePDDataset(X=stateDatasetList, y=target)
         train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True)
         # Ora siamo pronti ad allenare la NN
         self.modelNN = self.modelNN.to(torch.float32)
-        params = list(self.modelNN.parameters())
-        sizeFirstLayer = len(params)
-        print(params[0].size())
         loss_fn = nn.MSELoss()
         optimizer = torch.optim.SGD(self.modelNN.parameters(), lr=learning_rate)
         epochs = 1
@@ -392,7 +393,7 @@ class AgentNN:
             obs['actual_warehouse'].disposition = copy.deepcopy(self.actualDisposition.disposition)
             for t in range(self.time_limit):
                 action = self.get_action(obs=obs)
-                obs, reward, info = self.env.step(decision + action)
+                obs, reward, info = self.env.step(decision + action)  # passo lista azioni da fare (decision + azioni)
                 self.actualDisposition = copy.deepcopy(obs['actual_warehouse'])
                 next_state = self.defineState(self.actualDisposition)
                 decision = self.explore_decision()
@@ -402,75 +403,75 @@ class AgentNN:
 
         print("Simulation has finished!")
 
-    def agentDecisionRandom(self, grid, n_trials=3, n_moves=3):
-        # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
-        action_list = np.zeros((n_trials, 2 * n_moves), dtype='int')
-        decision_list = []
-        value_list = []
-        for k in range(0, n_trials):
-            i = 0
-            n_rep = 0
-            while i < 2*n_moves:
-                col1 = np.random.randint(0, self.n_cols)
-                col2 = np.random.randint(0, self.n_cols)
-                if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
-                    action_list[k, i] = col1
-                    action_list[k, i + 1] = col2
-                    i += 2
-                elif n_rep > 10 and self.actualDisposition.disposition[0, col2] != 0:
-                    action_list[k, i] = col1
-                    action_list[k, i + 1] = col1
-                else:
-                    n_rep += 1
-        for k in range(n_trials):
-            i = 0
-            flagNoMove = False
-            fake_grid = copy.deepcopy(grid)
-            while i < n_moves:
-                if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
-                    flagNoMove = True
-                    # value = 100000
-                    # value_list.append(value)
-                    i = n_moves  # per uscire dal while
-                else:
-                    fake_grid._move(action_list[k, i], action_list[k, i + 1])
-                    i += 2
-            if flagNoMove == False:
-                statePostDecision = self.defineState(fake_grid)
-                statePDTensor = self.toTorchTensor(state=statePostDecision)
-                # value = self.model(statePDTensor)
-                x = self.modelNN(statePDTensor)
-                value_list.append(x.item())
-            else:
-                value_list.append(100000)
-        k = np.argmin(np.array(value_list))
-        # valutiamo valore stato attuale:
-        statePostDecision = self.defineState(self.actualDisposition)
-        statePDTensor = self.toTorchTensor(state=statePostDecision)
-        value = self.modelNN(statePDTensor)
-        valueNoAction = value.detach().numpy()
-        if valueNoAction >= value_list[k]:
-            best_decision = action_list[k, :]
-            j = 0
-            while j < 2 * self.n_moves:
-                if best_decision[j] != best_decision[j + 1]:
-                    decisionDict = {
-                        'type': 'M',
-                        'col1': best_decision[j],
-                        'col2': best_decision[j + 1]
-                    }
-                    self.actualDisposition._move(
-                        col1=best_decision[j],
-                        col2=best_decision[j + 1]
-                    )
-                    decision_list.append(decisionDict)
-
-                j += 2
-
-        else:
-            decision_list = []
-
-        return decision_list
+    # def agentDecisionRandom(self, grid, n_trials=3, n_moves=3):
+    #     # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
+    #     action_list = np.zeros((n_trials, 2 * n_moves), dtype='int')
+    #     decision_list = []
+    #     value_list = []
+    #     for k in range(0, n_trials):
+    #         i = 0
+    #         n_rep = 0
+    #         while i < 2 * n_moves:
+    #             col1 = np.random.randint(0, self.n_cols)
+    #             col2 = np.random.randint(0, self.n_cols)
+    #             if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
+    #                 action_list[k, i] = col1
+    #                 action_list[k, i + 1] = col2
+    #                 i += 2
+    #             elif n_rep > 10 and self.actualDisposition.disposition[0, col2] != 0:
+    #                 action_list[k, i] = col1
+    #                 action_list[k, i + 1] = col1
+    #             else:
+    #                 n_rep += 1
+    #     for k in range(n_trials):
+    #         i = 0
+    #         flagNoMove = False
+    #         fake_grid = copy.deepcopy(grid)
+    #         while i < n_moves:
+    #             if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
+    #                 flagNoMove = True
+    #                 # value = 100000
+    #                 # value_list.append(value)
+    #                 i = n_moves  # per uscire dal while
+    #             else:
+    #                 fake_grid._move(action_list[k, i], action_list[k, i + 1])
+    #                 i += 2
+    #         if not flagNoMove:
+    #             statePostDecision = self.defineState(fake_grid)
+    #             statePDTensor = self.toTorchTensor(state=statePostDecision)
+    #             # value = self.model(statePDTensor)
+    #             x = self.modelNN(statePDTensor)
+    #             value_list.append(x.item())
+    #         else:
+    #             value_list.append(100000)
+    #     k = np.argmin(np.array(value_list))
+    #     # valutiamo valore stato attuale:
+    #     statePostDecision = self.defineState(self.actualDisposition)
+    #     statePDTensor = self.toTorchTensor(state=statePostDecision)
+    #     value = self.modelNN(statePDTensor)
+    #     valueNoAction = value.detach().numpy()
+    #     if valueNoAction >= value_list[k]:
+    #         best_decision = action_list[k, :]
+    #         j = 0
+    #         while j < 2 * self.n_moves:
+    #             if best_decision[j] != best_decision[j + 1]:
+    #                 decisionDict = {
+    #                     'type': 'M',
+    #                     'col1': best_decision[j],
+    #                     'col2': best_decision[j + 1]
+    #                 }
+    #                 self.actualDisposition._move(
+    #                     col1=best_decision[j],
+    #                     col2=best_decision[j + 1]
+    #                 )
+    #                 decision_list.append(decisionDict)
+    #
+    #             j += 2
+    #
+    #     else:
+    #         decision_list = []
+    #
+    #     return decision_list
 
     def valueState(self, state):
         statePostDecision = self.defineState(state)

@@ -62,21 +62,21 @@ class StatePDDataset(Dataset):
         return self.data[idx], self.target[idx]
 
 
-# def train_loop(dataloader, model, loss_fn, optimizer):
-#     size = len(dataloader.dataset)
-#     for batch, (X, y) in enumerate(dataloader):
-#         y = y.float()
-#         # Compute prediction and loss
-#         pred = model(X).float()
-#         loss = loss_fn(pred.squeeze(), y)
-#         # Backpropagation
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-#
-#         if batch % 100 == 0:
-#             loss, current = loss.item(), (batch + 1) * len(X)
-#             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
+def train_loop(dataloader, model, loss_fn, optimizer):
+    size = len(dataloader.dataset)
+    for batch, (X, y) in enumerate(dataloader):
+        y = y.float()
+        # Compute prediction and loss
+        pred = model(X).float()
+        loss = loss_fn(pred.squeeze(), y)
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if batch % 100 == 0:
+            loss, current = loss.item(), (batch + 1) * len(X)
+            print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
 class AgentNN2:
@@ -103,10 +103,6 @@ class AgentNN2:
         self.parcelFreq = np.zeros(n_item)
         self.tot_parcel = 0
         self.Q_Factor = []  # lista di dizionari tipo
-        # {'state' : disposition, 'decisionsKnown' : [], 'bestDecision' : decision,
-        # 'bestQ': q}
-        # dove la lista in decisionsKnown è composta da dizionari del tipo {'decision': decision, 'Q_factor': Q}
-        # SERVE PER RIDURRE TEMPO DI RICERCA COPPIA STATI-AZIONE
 
     def get_action(self, obs):  # aggiornare sempre cosa vede l'agente!
         self.n_time += 1
@@ -132,14 +128,6 @@ class AgentNN2:
                                 }
                             )
                             self.actualDisposition._move(col1=col, col2=c)
-                            # r = 1
-                            # while self.actualDisposition.disposition[r, c] == 0 and r < obs[
-                            #     'actual_warehouse'].n_rows:  # mi salvo posizione riga
-                            #     if r == self.actualDisposition.n_rows - 1:  # sono arrivato in fondo
-                            #         break
-                            #     r += 1
-                            # self.actualDisposition.disposition[r, c] = self.actualDisposition.disposition[ii, col]
-                            # self.actualDisposition.disposition[ii, col] = 0
             act.append(
                 {'type': 'O', 'col': col, 'n_order': i}
             )
@@ -157,16 +145,12 @@ class AgentNN2:
                         col
                     )
                     break
-        # plt.imshow(obs['actual_warehouse'].disposition)
         return act
 
     def learnFrequency(self, num_episode=1):
         obs = self.env.reset()
         self.actualDisposition = obs['actual_warehouse']
         for _ in tqdm(range(num_episode * self.time_limit)):
-            # print('Order:', obs['order'])
-            # print('New Parcel:', obs['new_parcel'])
-            # obs['actual_warehouse'] = agent.actualDisposition
             action = self.get_action(obs=obs)
             # print(action)
             obs, cost, info = self.env.step(action)
@@ -177,6 +161,7 @@ class AgentNN2:
         self.parcelFreq = self.parcelObs / self.tot_parcel
 
     def defineState(self, disposition):
+        # facciamo ipotesi si un unico movimento per azioni
         needChange = np.zeros(self.n_cols)
         freeSpace = np.zeros(self.n_cols)
         # Osservo la prima riga e la seconda riga di ciascuna colonna
@@ -245,7 +230,6 @@ class AgentNN2:
         findState = 0
         q_factor = self.Q_Factor
         for dictQFactor in q_factor:
-            # guardare bene l'if perchè tratta vettori di lunghezza diversa!!
             if compareState(dictQFactor['state'],
                             state):  # ho trovato lo stato
                 findState = 1
@@ -267,8 +251,8 @@ class AgentNN2:
         q_factor = self.Q_Factor
         alpha = self.learningCoeff
         gamma = self.discountCoeff
-        # setto gli indicatori degli stati a -1, così nel caso la coppia (stato, azione) non fosse già stata visitata,
-        # la creo io -> in pratica fanno anche da flag
+        # setto gli indicatori degli stati a -1, così nel caso la coppia (stato, azione) non sia già stata visitata,
+        # la creo io -> fanno anche da flag
         indexOldState = -1
         indexNewState = -1
         indexAction = -1
@@ -391,7 +375,7 @@ class AgentNN2:
                         action_list[0, move['col1']] = 1
                         action_list[1, move['col2']] = 1
                         state_action['action'] = action_list
-                        target.append(float(state_decision['Q_factor']))
+                        target.append(float(state_decision['Q_factor'])) # differenza rispetto a NN: append() fuori
                     else:
                         action_list = np.zeros((2, self.n_cols))
                         action_list[move['col1']] = 1
@@ -407,9 +391,6 @@ class AgentNN2:
         train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True)
         # Ora siamo pronti ad allenare la NN
         self.modelNN = self.modelNN.to(torch.float32)
-        params = list(self.modelNN.parameters())
-        sizeFirstLayer = len(params)
-        print(params[0].size())
         loss_fn = nn.MSELoss()
         optimizer = torch.optim.SGD(self.modelNN.parameters(), lr=learning_rate)
         epochs = 1

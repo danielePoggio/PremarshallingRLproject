@@ -1,7 +1,7 @@
-from agent import AgentNN2 as Agent
+from agent import AgentNN as Agent
 from env.warehouse import Warehouse
 from utils import marshallingWithoutAgent
-from utils import marshallingWithAgentNN2 as marshallingWithAgentNN
+from utils import marshallingWithAgentPD as marshallingWithAgentNN
 from utils import plot_comparison, plot_2d_graph
 
 
@@ -44,7 +44,7 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
     if expItems:
         alpha = 0.9
         n_rows = 3
-        n_cols = 3
+        n_cols = 4
         time_limit = 100
         iterations = 2
         n_parcel_types = 5
@@ -79,7 +79,7 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
     if expIterations:
         alpha = 0.9
         n_rows = 3
-        n_cols = 3
+        n_cols = 4
         time_limit = 100
         iterations = 2
         n_parcel_types = 5
@@ -112,7 +112,7 @@ def decide_next_steps(expColumns, expItems, expIterations, expLearningRateRL):
 
     if expLearningRateRL:
         n_rows = 3
-        n_cols = 3
+        n_cols = 4
         time_limit = 100
         iterations = 2
         n_parcel_types = 5
