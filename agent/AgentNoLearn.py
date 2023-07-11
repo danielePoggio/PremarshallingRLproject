@@ -3,11 +3,11 @@ import numpy as np
 from copy import deepcopy
 
 
-class Agent:
+class AgentNoLearn:
     def __init__(self):
         self.actualDisposition = None
 
-    def get_action(self, obs):  # aggiornare sempre cosa vede l'agente!
+    def get_action(self, obs):  # aggiornare sempre cosa vede l'agentNN2!
         self.actualDisposition = deepcopy(obs['actual_warehouse'])
         act = []
         #

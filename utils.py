@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
 def sort_columns_descending(matrix):
     # Count the number of non-zero elements in each column
     counts = np.count_nonzero(matrix, axis=0)
@@ -100,13 +99,13 @@ def train_loop(dataloader, model, loss_fn, optimizer):
 
 def marshallingWithoutAgent(enviroment, agente, time_limit):
     obs = enviroment.reset()
-    agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])  # azione necessaria perchè l'agente veda
+    agente.actualDisposition = copy.deepcopy(obs['actual_warehouse'])  # azione necessaria perchè l'agentNN2 veda
     # l'ambiente
     tot_cost = 0
     for t in range(time_limit):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
-        decision = []  # siccome l'agente non prende decisioni è come se la lista delle decisioni fosse vuota
+        decision = []  # siccome l'agentNN2 non prende decisioni è come se la lista delle decisioni fosse vuota
         action = agente.get_action(obs=obs)  # risolve ordini
         print(action)
         obs, cost, info = enviroment.step(decision + action)
@@ -122,7 +121,7 @@ def marshallingWithoutAgent(enviroment, agente, time_limit):
 def marshallingWithAgentNN(enviroment, agente, time_limit, iterations):
     start_time = time.time()
     agente.learnFrequency(num_episode=1)
-    # Eseguiamo apprendimento dell'agente
+    # Eseguiamo apprendimento dell'agentNN2
     agente.learn(iterations=iterations)
     # Resettiamo ambiente
     obs = enviroment.reset()
@@ -133,7 +132,7 @@ def marshallingWithAgentNN(enviroment, agente, time_limit, iterations):
     for t in range(time_limit):
         print('Order:', obs['order'])
         print('New Parcel:', obs['new_parcel'])
-        decision = agente.agentDecisionRandom(grid=agente.actualDisposition, n_trials=3, n_moves=3)  # prende decisione
+        decision = agente.agentDecisionRandom(grid=agente.actualDisposition)  # prende decisione
         if decision != []:
             no_empty_decisions += 1
         obs['actual_warehouse'].disposition = copy.deepcopy(agente.actualDisposition.disposition)
@@ -150,10 +149,11 @@ def marshallingWithAgentNN(enviroment, agente, time_limit, iterations):
     elapsed_time = end_time - start_time
     return tot_cost, elapsed_time, no_empty_decisions
 
+
 def marshallingWithAgentNN2(enviroment, agente, time_limit, iterations):
     start_time = time.time()
     agente.learnFrequency(num_episode=1)
-    # Eseguiamo apprendimento dell'agente
+    # Eseguiamo apprendimento dell'agentNN2
     agente.learn(iterations=iterations)
     # Resettiamo ambiente
     obs = enviroment.reset()
@@ -185,10 +185,11 @@ def marshallingWithAgentNN2(enviroment, agente, time_limit, iterations):
     elapsed_time = end_time - start_time
     return tot_cost, elapsed_time, no_empty_decisions
 
+
 def marshallingWithAgentPD(enviroment, agente, time_limit, iterations):
     start_time = time.time()
     agente.learnFrequency(num_episode=1)
-    # Eseguiamo apprendimento dell'agente
+    # Eseguiamo apprendimento dell'agentNN2
     agente.learn(iterations=iterations)
     # Resettiamo ambiente
     obs = enviroment.reset()
@@ -213,6 +214,7 @@ def marshallingWithAgentPD(enviroment, agente, time_limit, iterations):
     elapsed_time = end_time - start_time
     return tot_cost, elapsed_time, no_empty_decisions
 
+
 def plot_2d_graph(x_data, y_data, x_label, y_label, title):
     # Creazione del grafico
     plt.plot(x_data, y_data)
@@ -228,13 +230,12 @@ def plot_2d_graph(x_data, y_data, x_label, y_label, title):
     plt.show()
 
 
-def plot_comparison(x_data, y1_data, y2_data, x_label, y_label, title, label1, label2):
-    # Creazione del grafico
-    plt.plot(x_data, y1_data, label=label1)
-    plt.plot(x_data, y2_data, label=label2)
-
+def plot_2(x, y1, y2, x_label, y_label, title, path):
+    plt.figure()
+    plt.plot(x, y1, label="AgentNN1")
+    plt.plot(x, y2, label="AgentNN2")
     # Titolo del grafico
-    plt.title(title)
+    plt.title('')
 
     # Etichette degli assi
     plt.xlabel(x_label)
@@ -244,9 +245,31 @@ def plot_comparison(x_data, y1_data, y2_data, x_label, y_label, title, label1, l
     plt.legend()
 
     # Visualizzazione del grafico
-    plt.show()
+    save_file_path = path + '/' + title + '.png'
+    plt.savefig(save_file_path)
+    plt.close()
 
 
+def plot_3(x_data, yNoLearn, yNN, yNN2, x_label, y_label, title, path):
+    # Creazione del grafico
+    plt.figure()
+    plt.plot(x_data, yNoLearn, label="Agent No learning")
+    plt.plot(x_data, yNN, label="AgentNN1")
+    plt.plot(x_data, yNN2, label="AgentNN2")
 
+    # Titolo del grafico
+    plt.title('')
 
+    # Etichette degli assi
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    # Mostra la legenda
+    plt.legend()
+
+    # Visualizzazione del grafico
+    save_file_path = path + '/' + title + '.png'
+
+    plt.savefig(save_file_path)
+    plt.close()
 

@@ -1,12 +1,8 @@
-from .agent import Agent
-from .agentPostDecision import AgentPostDecision
-from .DeepAgent import DeepAgent
 from .AgentNN2 import AgentNN2
 from .AgentNN import AgentNN
-from .agentNoLearn import Agent
-from .AgentEasy import AgentEasy
+from .AgentNoLearn import AgentNoLearn
 
 
 __all__ = [
-    "Agent",
+       "AgentNN", "AgentNN2", "AgentNoLearn"
 ]

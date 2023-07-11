@@ -104,7 +104,7 @@ class AgentNN2:
         self.tot_parcel = 0
         self.Q_Factor = []  # lista di dizionari tipo
 
-    def get_action(self, obs):  # aggiornare sempre cosa vede l'agente!
+    def get_action(self, obs):  # aggiornare sempre cosa vede l'agentNN2!
         self.n_time += 1
         act = []
         #
@@ -447,7 +447,7 @@ class AgentNN2:
             else:
                 working = False
 
-        for move in decision_list:  # aggiorno stato agente
+        for move in decision_list:  # aggiorno stato agentNN2
             self.actualDisposition._move(
                 col1=move['col1'],
                 col2=move['col2']

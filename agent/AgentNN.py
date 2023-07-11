@@ -87,7 +87,7 @@ class AgentNN:
         # dove la lista in decisionsKnown è composta da dizionari del tipo {'decision': decision, 'Q_factor': Q}
         # SERVE PER RIDURRE TEMPO DI RICERCA COPPIA STATI-AZIONE
 
-    def get_action(self, obs):  # aggiornare sempre cosa vede l'agente!
+    def get_action(self, obs):  # aggiornare sempre cosa vede l'agentNN2!
         self.n_time += 1
         act = []
         #
@@ -403,75 +403,75 @@ class AgentNN:
 
         print("Simulation has finished!")
 
-    # def agentDecisionRandom(self, grid, n_trials=3, n_moves=3):
-    #     # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
-    #     action_list = np.zeros((n_trials, 2 * n_moves), dtype='int')
-    #     decision_list = []
-    #     value_list = []
-    #     for k in range(0, n_trials):
-    #         i = 0
-    #         n_rep = 0
-    #         while i < 2 * n_moves:
-    #             col1 = np.random.randint(0, self.n_cols)
-    #             col2 = np.random.randint(0, self.n_cols)
-    #             if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
-    #                 action_list[k, i] = col1
-    #                 action_list[k, i + 1] = col2
-    #                 i += 2
-    #             elif n_rep > 10 and self.actualDisposition.disposition[0, col2] != 0:
-    #                 action_list[k, i] = col1
-    #                 action_list[k, i + 1] = col1
-    #             else:
-    #                 n_rep += 1
-    #     for k in range(n_trials):
-    #         i = 0
-    #         flagNoMove = False
-    #         fake_grid = copy.deepcopy(grid)
-    #         while i < n_moves:
-    #             if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
-    #                 flagNoMove = True
-    #                 # value = 100000
-    #                 # value_list.append(value)
-    #                 i = n_moves  # per uscire dal while
-    #             else:
-    #                 fake_grid._move(action_list[k, i], action_list[k, i + 1])
-    #                 i += 2
-    #         if not flagNoMove:
-    #             statePostDecision = self.defineState(fake_grid)
-    #             statePDTensor = self.toTorchTensor(state=statePostDecision)
-    #             # value = self.model(statePDTensor)
-    #             x = self.modelNN(statePDTensor)
-    #             value_list.append(x.item())
-    #         else:
-    #             value_list.append(100000)
-    #     k = np.argmin(np.array(value_list))
-    #     # valutiamo valore stato attuale:
-    #     statePostDecision = self.defineState(self.actualDisposition)
-    #     statePDTensor = self.toTorchTensor(state=statePostDecision)
-    #     value = self.modelNN(statePDTensor)
-    #     valueNoAction = value.detach().numpy()
-    #     if valueNoAction >= value_list[k]:
-    #         best_decision = action_list[k, :]
-    #         j = 0
-    #         while j < 2 * self.n_moves:
-    #             if best_decision[j] != best_decision[j + 1]:
-    #                 decisionDict = {
-    #                     'type': 'M',
-    #                     'col1': best_decision[j],
-    #                     'col2': best_decision[j + 1]
-    #                 }
-    #                 self.actualDisposition._move(
-    #                     col1=best_decision[j],
-    #                     col2=best_decision[j + 1]
-    #                 )
-    #                 decision_list.append(decisionDict)
-    #
-    #             j += 2
-    #
-    #     else:
-    #         decision_list = []
-    #
-    #     return decision_list
+    def agentDecisionRandom(self, grid, n_trials=3, n_moves=3):
+        # Idea, tra gli stati da valutare è conveniente vedere se è preferibile rimanere nello stato attuale
+        action_list = np.zeros((n_trials, 2 * n_moves), dtype='int')
+        decision_list = []
+        value_list = []
+        for k in range(0, n_trials):
+            i = 0
+            n_rep = 0
+            while i < 2 * n_moves:
+                col1 = np.random.randint(0, self.n_cols)
+                col2 = np.random.randint(0, self.n_cols)
+                if self.actualDisposition.disposition[0, col2] == 0 and col1 != col2:
+                    action_list[k, i] = col1
+                    action_list[k, i + 1] = col2
+                    i += 2
+                elif n_rep > 10 and self.actualDisposition.disposition[0, col2] != 0:
+                    action_list[k, i] = col1
+                    action_list[k, i + 1] = col1
+                else:
+                    n_rep += 1
+        for k in range(n_trials):
+            i = 0
+            flagNoMove = False
+            fake_grid = copy.deepcopy(grid)
+            while i < n_moves:
+                if fake_grid.disposition[0, action_list[k, i + 1]] != 0:
+                    flagNoMove = True
+                    # value = 100000
+                    # value_list.append(value)
+                    i = n_moves  # per uscire dal while
+                else:
+                    fake_grid._move(action_list[k, i], action_list[k, i + 1])
+                    i += 2
+            if not flagNoMove:
+                statePostDecision = self.defineState(fake_grid)
+                statePDTensor = self.toTorchTensor(state=statePostDecision)
+                # value = self.model(statePDTensor)
+                x = self.modelNN(statePDTensor)
+                value_list.append(x.item())
+            else:
+                value_list.append(100000)
+        k = np.argmin(np.array(value_list))
+        # valutiamo valore stato attuale:
+        statePostDecision = self.defineState(self.actualDisposition)
+        statePDTensor = self.toTorchTensor(state=statePostDecision)
+        value = self.modelNN(statePDTensor)
+        valueNoAction = value.detach().numpy()
+        if valueNoAction >= value_list[k]:
+            best_decision = action_list[k, :]
+            j = 0
+            while j < 2 * self.n_moves:
+                if best_decision[j] != best_decision[j + 1]:
+                    decisionDict = {
+                        'type': 'M',
+                        'col1': best_decision[j],
+                        'col2': best_decision[j + 1]
+                    }
+                    self.actualDisposition._move(
+                        col1=best_decision[j],
+                        col2=best_decision[j + 1]
+                    )
+                    decision_list.append(decisionDict)
+
+                j += 2
+
+        else:
+            decision_list = []
+
+        return decision_list
 
     def valueState(self, state):
         statePostDecision = self.defineState(state)
@@ -493,7 +493,7 @@ class AgentNN:
                 working = findMin and np.random.binomial(1, probStop)
             else:
                 working = False
-        for move in decision_list:  # aggiorno disposizione che vede agente
+        for move in decision_list:  # aggiorno disposizione che vede agentNN2
             self.actualDisposition._move(
                 col1=move['col1'],
                 col2=move['col2']
